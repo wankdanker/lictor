@@ -75,6 +75,13 @@ Run the workflow by hand (Actions, Release, Run workflow) to build everything wi
 Build one target locally with `./scripts/package.sh <target> dist` (Linux targets need
 `cargo-zigbuild` and `zig`; packages need `cargo-deb` and `cargo-generate-rpm`).
 
+## Known issues
+
+- **Windows: absolute paths for `--config` and `--config-dir`.** CLYOPS 0.13.1 treats only paths
+  starting with `/` as absolute, so `C:\...` is joined onto the current directory. Use a path
+  relative to the current directory on Windows until CLYOPS is fixed. The three tests that cover
+  these options are ignored on Windows (`cfg_attr(windows, ignore)` in `crates/lictor/tests/cli_dev.rs`).
+
 ## Dependencies
 
 - [CLYOPS](https://clyops.io) is used from git, pinned to a tag in the root `Cargo.toml`.

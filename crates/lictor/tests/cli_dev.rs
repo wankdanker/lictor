@@ -145,6 +145,7 @@ port = 5432
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "clyops 0.13.1 resolves absolute Windows paths incorrectly; see docs/development.md")]
 fn config_dir_services_are_registered_at_start() {
     let conf = tempfile::tempdir().unwrap();
     std::fs::write(conf.path().join("web.toml"), "name = \"web\"\nport = 80\n").unwrap();
@@ -154,6 +155,7 @@ fn config_dir_services_are_registered_at_start() {
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "clyops 0.13.1 resolves absolute Windows paths incorrectly; see docs/development.md")]
 fn bad_config_dir_fails_the_agent() {
     let conf = tempfile::tempdir().unwrap();
     std::fs::write(conf.path().join("web.toml"), "name = \"bad name\"\n").unwrap();
@@ -259,6 +261,7 @@ fn api_token_is_enforced() {
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "clyops 0.13.1 resolves absolute Windows paths incorrectly; see docs/development.md")]
 fn config_file_sets_options() {
     let a = AgentProc::start(&["--dev"]);
     let dir = tempfile::tempdir().unwrap();

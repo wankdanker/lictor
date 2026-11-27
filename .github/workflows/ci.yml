@@ -65,7 +65,7 @@ jobs:
       - name: Install nats-server ${{ matrix.nats }}
         run: ./scripts/install-nats-server.sh "${{ matrix.nats }}" "$RUNNER_TEMP/nats" >> "$GITHUB_PATH"
       - run: nats-server --version
-      - run: cargo test --workspace --all-features --locked
+      - run: cargo test --workspace --all-features --locked --no-fail-fast
 
   test-os:
     name: Test (${{ matrix.os }})
@@ -81,7 +81,7 @@ jobs:
       - name: Install nats-server
         shell: bash
         run: ./scripts/install-nats-server.sh "$DEFAULT_NATS_VERSION" "$RUNNER_TEMP/nats" >> "$GITHUB_PATH"
-      - run: cargo test --workspace --all-features --locked
+      - run: cargo test --workspace --all-features --locked --no-fail-fast
 
   msrv:
     name: Minimum Rust version
@@ -109,7 +109,7 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - name: Install nats-server
         run: ./scripts/install-nats-server.sh "$DEFAULT_NATS_VERSION" "$RUNNER_TEMP/nats" >> "$GITHUB_PATH"
-      - run: cargo llvm-cov --workspace --all-features --locked --lcov --output-path lcov.info
+      - run: cargo llvm-cov --workspace --all-features --locked --no-fail-fast --lcov --output-path lcov.info
       - name: Coverage summary
         run: cargo llvm-cov report --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
