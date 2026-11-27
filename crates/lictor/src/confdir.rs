@@ -159,6 +159,8 @@ mod tests {
 #[cfg(test)]
 mod doc_examples {
     fn toml_blocks(doc: &str) -> Vec<String> {
+        // Checkouts on Windows may have CRLF line endings.
+        let doc = doc.replace("\r\n", "\n");
         doc.split("```toml\n").skip(1).filter_map(|b| b.split("```").next()).map(str::to_string).collect()
     }
 

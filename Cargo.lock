@@ -970,7 +970,6 @@ dependencies = [
  "humantime",
  "serde",
  "serde_json",
- "thiserror",
 ]
 
 [[package]]
