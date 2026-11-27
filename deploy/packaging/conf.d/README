@@ -1,0 +1,13 @@
+Service definitions in this directory (*.toml or *.json) are registered when the
+agent starts. Example web.toml:
+
+    name = "web"
+    port = 8080
+    tags = ["v2"]
+
+    [[checks]]
+    type = "http"
+    url = "http://127.0.0.1:8080/health"
+    interval = "10s"
+
+See https://github.com/wankdanker/lictor/blob/main/docs/configuration.md

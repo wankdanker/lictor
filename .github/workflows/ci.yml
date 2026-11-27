@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Tests that need nats-server fail instead of skipping when it is missing.
+  LICTOR_REQUIRE_NATS: "1"
+  DEFAULT_NATS_VERSION: v2.15.3
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --workspace --no-deps --all-features --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  test-linux:
+    name: Test (Linux, NATS ${{ matrix.nats }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest supported, every maintained minor, and latest.
+        nats: [v2.10.29, v2.11.17, v2.12.15, v2.14.10, v2.15.3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install nats-server ${{ matrix.nats }}
+        run: ./scripts/install-nats-server.sh "${{ matrix.nats }}" "$RUNNER_TEMP/nats" >> "$GITHUB_PATH"
+      - run: nats-server --version
+      - run: cargo test --workspace --all-features --locked
+
+  test-os:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install nats-server
+        shell: bash
+        run: ./scripts/install-nats-server.sh "$DEFAULT_NATS_VERSION" "$RUNNER_TEMP/nats" >> "$GITHUB_PATH"
+      - run: cargo test --workspace --all-features --locked
+
+  msrv:
+    name: Minimum Rust version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read rust-version from Cargo.toml
+        id: msrv
+        run: echo "version=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --all-targets --all-features --locked
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Install nats-server
+        run: ./scripts/install-nats-server.sh "$DEFAULT_NATS_VERSION" "$RUNNER_TEMP/nats" >> "$GITHUB_PATH"
+      - run: cargo llvm-cov --workspace --all-features --locked --lcov --output-path lcov.info
+      - name: Coverage summary
+        run: cargo llvm-cov report --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lcov
+          path: lcov.info
+
+  package:
+    name: Package smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild,cargo-deb,cargo-generate-rpm
+      - uses: mlugg/setup-zig@v2
+      - run: ./scripts/package.sh x86_64-unknown-linux-musl dist
+      - name: The static binary runs
+        run: |
+          file target/x86_64-unknown-linux-musl/release/lictor
+          target/x86_64-unknown-linux-musl/release/lictor --version
+      - name: Install the .deb and run it
+        run: |
+          sudo apt-get install -y ./dist/*.deb
+          lictor --version
+          systemctl cat lictor.service
+          test -f /etc/lictor/lictor.conf
+          getent passwd lictor
+      - name: Inspect the .rpm
+        run: |
+          sudo apt-get install -y rpm
+          rpm -qpl dist/*.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-smoke
+          path: dist/

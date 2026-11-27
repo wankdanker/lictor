@@ -1,0 +1,79 @@
+[package]
+name = "lictor"
+description = "Lightweight service registry on NATS JetStream (agent, CLI, HTTP API)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "../../README.md"
+keywords = ["service-discovery", "nats", "consul", "registry", "health-check"]
+categories = ["network-programming", "command-line-utilities"]
+
+[[bin]]
+name = "lictor"
+path = "src/main.rs"
+
+[dependencies]
+lictor-types.workspace = true
+lictor-store.workspace = true
+lictor-store-nats.workspace = true
+lictor-core.workspace = true
+clyops.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+bytes.workspace = true
+form_urlencoded.workspace = true
+futures.workspace = true
+gethostname.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+lictor-store-nats = { workspace = true, features = ["testing"] }
+assert_cmd.workspace = true
+predicates.workspace = true
+tempfile.workspace = true
+
+[package.metadata.deb]
+maintainer = "Dan VerWeire"
+copyright = "Dan VerWeire"
+license-file = ["../../LICENSE", "0"]
+extended-description = """\
+Lictor is a lightweight, distributed service registry built on NATS JetStream. \
+Each host runs a small agent that registers services, runs health checks and \
+answers discovery queries from a local in-memory catalog."""
+section = "net"
+priority = "optional"
+assets = [
+    ["target/release/lictor", "usr/bin/", "755"],
+    ["../../deploy/systemd/lictor.service", "lib/systemd/system/lictor.service", "644"],
+    ["../../deploy/packaging/lictor.conf", "etc/lictor/lictor.conf", "644"],
+    ["../../deploy/packaging/conf.d/README", "etc/lictor/conf.d/README", "644"],
+    ["../../README.md", "usr/share/doc/lictor/README.md", "644"],
+]
+conf-files = ["/etc/lictor/lictor.conf"]
+maintainer-scripts = "../../deploy/packaging/debian/"
+
+[package.metadata.generate-rpm]
+summary = "Lightweight service registry on NATS JetStream"
+license = "MIT"
+assets = [
+    { source = "target/release/lictor", dest = "/usr/bin/lictor", mode = "755" },
+    { source = "../../deploy/systemd/lictor.service", dest = "/usr/lib/systemd/system/lictor.service", mode = "644" },
+    { source = "../../deploy/packaging/lictor.conf", dest = "/etc/lictor/lictor.conf", mode = "644", config = "noreplace" },
+    { source = "../../deploy/packaging/conf.d/README", dest = "/etc/lictor/conf.d/README", mode = "644" },
+    { source = "../../README.md", dest = "/usr/share/doc/lictor/README.md", mode = "644", doc = true },
+]
+post_install_script = "../../deploy/packaging/rpm/postinstall.sh"
+pre_install_script = "../../deploy/packaging/rpm/preinstall.sh"

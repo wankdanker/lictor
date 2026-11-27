@@ -1,0 +1,30 @@
+[Unit]
+Description=Lictor service registry agent
+Documentation=https://github.com/wankdanker/lictor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lictor
+Group=lictor
+ExecStart=/usr/bin/lictor --config /etc/lictor/lictor.conf agent
+Restart=on-failure
+RestartSec=2
+# Exit status 4 means a newer agent took over this node id. Restarting would
+# fence that agent in turn, so do not restart.
+RestartPreventExitStatus=4
+StateDirectory=lictor
+Environment=LICTOR_DATA_DIR=/var/lib/lictor
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

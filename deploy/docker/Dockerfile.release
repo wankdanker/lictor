@@ -1,0 +1,9 @@
+# Used by the release workflow: copies the prebuilt static binary for each platform.
+FROM gcr.io/distroless/static-debian12:nonroot
+ARG TARGETARCH
+COPY ${TARGETARCH}/lictor /usr/bin/lictor
+ENV LICTOR_HTTP_ADDR=0.0.0.0:7171 \
+    LICTOR_DATA_DIR=/home/nonroot/.lictor
+EXPOSE 7171
+ENTRYPOINT ["/usr/bin/lictor"]
+CMD ["agent"]

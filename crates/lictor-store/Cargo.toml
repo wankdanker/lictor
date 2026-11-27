@@ -1,0 +1,30 @@
+[package]
+name = "lictor-store"
+description = "Storage backend abstraction for Lictor, with an in-memory implementation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[features]
+# Exposes `lictor_store::conformance`, the test suite every backend must pass.
+conformance = ["dep:rand"]
+
+[dependencies]
+async-trait.workspace = true
+bytes.workspace = true
+futures.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }
+tokio-stream.workspace = true
+rand = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[[test]]
+name = "conformance"
+required-features = ["conformance"]

@@ -1,0 +1,24 @@
+# A NATS server and two agents, for trying Lictor locally:
+#   docker compose -f deploy/docker/compose.yaml up --build
+#   docker compose -f deploy/docker/compose.yaml exec agent-a lictor services register --name web --port 8080
+#   docker compose -f deploy/docker/compose.yaml exec agent-b lictor discover web
+services:
+  nats:
+    image: nats:2.11-alpine
+    command: ["-js", "-sd", "/data"]
+    ports: ["4222:4222"]
+
+  agent-a: &agent
+    build: { context: ../.., dockerfile: deploy/docker/Dockerfile }
+    environment:
+      LICTOR_NATS_URL: nats://nats:4222
+      LICTOR_NODE_ID: agent-a
+      LICTOR_HTTP_TOKEN: change-me
+    depends_on: [nats]
+
+  agent-b:
+    <<: *agent
+    environment:
+      LICTOR_NATS_URL: nats://nats:4222
+      LICTOR_NODE_ID: agent-b
+      LICTOR_HTTP_TOKEN: change-me
