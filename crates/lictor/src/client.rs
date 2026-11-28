@@ -162,6 +162,14 @@ impl Registry for HttpRegistry {
         }
     }
 
+    async fn service_definition(&self, service_id: &str) -> Result<Option<ServiceRegistration>> {
+        match self.get(&format!("/v1/agent/services/{}/definition", encode(service_id)), &[]).await {
+            Ok(s) => Ok(Some(s)),
+            Err(RegistryError::NotFound(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     async fn local_services(&self) -> Result<Vec<ServiceInstance>> {
         self.get("/v1/agent/services", &[]).await
     }

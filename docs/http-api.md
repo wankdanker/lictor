@@ -1,7 +1,7 @@
 # Native HTTP API
 
-Every agent serves a small JSON API, by default on `127.0.0.1:7171`. The CLI uses it; so can
-your applications. (The Consul-compatible API is a separate adapter, on the [roadmap](roadmap.md).)
+Every agent serves a small JSON API, by default on `127.0.0.1:7171`. The CLI and the
+[web UI](ui.md) use it; so can your applications. (The Consul-compatible API is a separate adapter, on the [roadmap](roadmap.md).)
 
 With `--token`, every request needs `Authorization: Bearer <token>` (or `X-Lictor-Token: <token>`).
 
@@ -15,7 +15,7 @@ Non-2xx responses carry:
 
 | Code | HTTP | Meaning |
 |---|---|---|
-| `invalid` | 400 | Bad input. |
+| `invalid` | 400 | Bad input, including a body that is not JSON or has an unknown field. |
 | `unauthorized` | 401 | Missing or wrong token. |
 | `not_found` | 404 | No such service, check or endpoint. |
 | `conflict` | 409 | A conflicting write won. |
@@ -114,6 +114,18 @@ curl -X POST localhost:7171/v1/agent/services -d '{"name":"web","port":8080,"che
 ### `GET /v1/agent/services`, `GET /v1/agent/services/{id}`
 
 This agent's services (whether or not currently discoverable), in the instance format above.
+
+### `GET /v1/agent/services/{id}/definition`
+
+The stored definition of one of this agent's services, with every default filled in (id, address,
+protocol, check ids and names). It is the format `POST /v1/agent/services` accepts, so it can be
+edited and registered again; `lictor services export ID` prints it.
+
+```json
+{ "id": "web", "name": "web", "address": "10.0.1.5", "port": 8080, "protocol": "tcp", "tags": ["v2"],
+  "checks": [{ "id": "service:web", "name": "Service 'web' check", "type": "ttl", "ttl": "30s",
+               "initial_status": "critical" }] }
+```
 
 ### `DELETE /v1/agent/services/{id}`
 

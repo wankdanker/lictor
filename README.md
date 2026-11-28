@@ -10,6 +10,8 @@ answers "where is `web`?". It is built to speak Consul's protocols (coming soon)
 - **No servers of its own.** NATS JetStream stores, replicates and distributes the registry.
   There is no leader election, no gossip, and agents never talk to each other.
 - **Local answers.** Every agent keeps an in-memory copy of the catalog, so lookups never wait on the network.
+- **A web UI included.** Every agent serves a management UI at `/ui`: browse the catalog, watch
+  instances live, register and edit services, report checks.
 - **Health checks built in.** TCP, HTTP(S) and TTL checks, with thresholds and auto-deregistration.
 - **Safe by construction.** Membership leases expire on their own; a restarted or duplicated
   agent fences the old one, so stale data never wins.
@@ -37,6 +39,8 @@ web      web  dev   127.0.0.1:8080  passing  v2    default/dc1
 
 $ lictor discover web --healthy -o json     # every command speaks JSON too
 ```
+
+Then open <http://127.0.0.1:7171/ui> for the [web UI](docs/ui.md).
 
 ## For real: with NATS
 
@@ -125,6 +129,7 @@ to that node's current *generation*. Read [architecture.md](docs/architecture.md
 | [CLI reference](docs/cli.md) | Every command, flag and exit code |
 | [Configuration](docs/configuration.md) | Flags, `LICTOR_*` variables, the config file, service definitions |
 | [HTTP API](docs/http-api.md) | The agent's native `/v1` API |
+| [Web UI](docs/ui.md) | The management UI every agent serves at `/ui` |
 | [Architecture](docs/architecture.md) | Data model, leases, generations, consistency, failure handling |
 | [Storage backends](docs/backends.md) | The `Store` trait and how to replace NATS |
 | [Development](docs/development.md) | Building, testing, CI and releasing |

@@ -16,7 +16,11 @@ Lictor separates three things:
 | `lictor-store` | The `Store`/`Bucket` traits, the in-memory store, and the backend conformance suite. |
 | `lictor-store-nats` | The NATS JetStream KV store (plus a `testing` helper that runs `nats-server`). |
 | `lictor-core` | `Catalog`, `Agent`, `Observer`, health engine, and the `Registry` trait. |
-| `lictor` | The binary: CLI (CLYOPS), agent runner, native HTTP API server and client. |
+| `lictor` | The binary: CLI (CLYOPS), agent runner, native HTTP API server and client, embedded web UI. |
+
+The web UI (`ui/`, SvelteKit) is a single-page app built to static files and embedded into the
+`lictor` binary at compile time (`crates/lictor/build.rs`). It is a client of the native HTTP API
+like the CLI, with no access of its own. See [ui.md](ui.md).
 
 ## Data model
 

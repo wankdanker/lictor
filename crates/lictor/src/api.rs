@@ -6,7 +6,8 @@
 use axum::Json;
 use axum::Router;
 use axum::body::Body;
-use axum::extract::{Path, RawQuery, Request, State};
+use axum::extract::rejection::JsonRejection;
+use axum::extract::{FromRequest, Path, RawQuery, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -65,6 +66,31 @@ impl IntoResponse for ApiError {
 }
 
 type ApiResult<T> = Result<Json<T>, ApiError>;
+
+/// A JSON request body. A body that is not valid JSON, or not the expected shape (an unknown
+/// field, a missing `name`), is an `invalid` error in the usual error format.
+pub struct JsonBody<T>(pub T);
+
+impl<S: Send + Sync, T: serde::de::DeserializeOwned> FromRequest<S> for JsonBody<T> {
+    type Rejection = ApiError;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, ApiError> {
+        match Json::<T>::from_request(req, state).await {
+            Ok(Json(v)) => Ok(JsonBody(v)),
+            Err(e) => Err(ApiError(RegistryError::Invalid(rejection_message(&e)))),
+        }
+    }
+}
+
+fn rejection_message(e: &JsonRejection) -> String {
+    match e {
+        JsonRejection::MissingJsonContentType(_) => {
+            "the request body must be JSON (Content-Type: application/json)".into()
+        }
+        // "Failed to deserialize the JSON body into the target type: unknown field `prot`, ..."
+        _ => e.body_text().replace("Failed to deserialize the JSON body into the target type: ", ""),
+    }
+}
 
 /// Parse a query string into pairs, keeping repeated keys.
 fn pairs(raw: &Option<String>) -> Vec<(String, String)> {
@@ -135,13 +161,20 @@ async fn local_services(State(r): State<Reg>) -> ApiResult<Vec<lictor_types::Ser
 
 async fn register(
     State(r): State<Reg>,
-    Json(reg): Json<ServiceRegistration>,
+    JsonBody(reg): JsonBody<ServiceRegistration>,
 ) -> Result<(StatusCode, Json<lictor_types::RegistrationReceipt>), ApiError> {
     Ok((StatusCode::CREATED, Json(r.register(reg).await?)))
 }
 
 async fn get_service(State(r): State<Reg>, Path(id): Path<String>) -> ApiResult<lictor_types::ServiceInstance> {
     match r.get_service(&id).await? {
+        Some(s) => Ok(Json(s)),
+        None => Err(RegistryError::NotFound(format!("service '{id}'")).into()),
+    }
+}
+
+async fn get_definition(State(r): State<Reg>, Path(id): Path<String>) -> ApiResult<ServiceRegistration> {
+    match r.service_definition(&id).await? {
         Some(s) => Ok(Json(s)),
         None => Err(RegistryError::NotFound(format!("service '{id}'")).into()),
     }
@@ -163,7 +196,7 @@ pub struct CheckCreated {
 
 async fn register_check(
     State(r): State<Reg>,
-    Json(c): Json<HealthCheck>,
+    JsonBody(c): JsonBody<HealthCheck>,
 ) -> Result<(StatusCode, Json<CheckCreated>), ApiError> {
     Ok((StatusCode::CREATED, Json(CheckCreated { check_id: r.register_check(c).await? })))
 }
@@ -183,7 +216,7 @@ pub struct Note {
 async fn update_check(
     State(r): State<Reg>,
     Path((id, verb)): Path<(String, String)>,
-    body: Option<Json<Note>>,
+    body: bytes::Bytes,
 ) -> Result<StatusCode, ApiError> {
     let status = match verb.as_str() {
         "pass" => HealthStatus::Passing,
@@ -193,7 +226,14 @@ async fn update_check(
             return Err(RegistryError::Invalid(format!("unknown check update '{other}' (pass, warn or fail)")).into());
         }
     };
-    let output = body.map(|b| b.0.output).unwrap_or_default();
+    // The body is optional: an empty one records no output.
+    let output = if body.iter().all(u8::is_ascii_whitespace) {
+        String::new()
+    } else {
+        serde_json::from_slice::<Note>(&body)
+            .map_err(|e| RegistryError::Invalid(format!("check update body: {e}")))?
+            .output
+    };
     r.update_health(HealthUpdate { check_id: id, status, output }).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -221,6 +261,7 @@ pub fn router(registry: Reg, token: Option<String>) -> Router {
         .route("/v1/watch/{name}", get(watch))
         .route("/v1/agent/services", get(local_services).post(register))
         .route("/v1/agent/services/{id}", get(get_service).delete(deregister))
+        .route("/v1/agent/services/{id}/definition", get(get_definition))
         .route("/v1/agent/checks", get(local_checks).post(register_check))
         .route("/v1/agent/checks/{id}", axum::routing::delete(deregister_check))
         .route("/v1/agent/checks/{id}/{verb}", put(update_check))
@@ -271,6 +312,52 @@ mod tests {
         let mut h = HeaderMap::new();
         h.insert("x-lictor-token", "s3cret".parse().unwrap());
         assert!(authorized(&h, "s3cret"));
+    }
+
+    async fn call(app: &Router, method: &str, uri: &str, ctype: Option<&str>, body: &str) -> (StatusCode, String) {
+        use tower::ServiceExt;
+        let mut req = Request::builder().method(method).uri(uri);
+        if let Some(ct) = ctype {
+            req = req.header(header::CONTENT_TYPE, ct);
+        }
+        let res = app.clone().oneshot(req.body(Body::from(body.to_string())).unwrap()).await.unwrap();
+        let status = res.status();
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        (status, String::from_utf8_lossy(&bytes).into_owned())
+    }
+
+    #[tokio::test]
+    async fn bad_bodies_are_invalid_errors() {
+        let store = Arc::new(lictor_store::MemoryStore::new());
+        let agent = lictor_core::Agent::start(store, lictor_core::AgentConfig::new("n1")).await.unwrap();
+        let app = router(Arc::new(agent), None);
+        let json = Some("application/json");
+
+        let (s, body) = call(&app, "POST", "/v1/agent/services", json, r#"{"name":"web","prot":1}"#).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        let err: ErrorBody = serde_json::from_str(&body).unwrap();
+        assert_eq!(err.error.code, "invalid");
+        assert!(err.error.message.contains("prot: unknown field `prot`"), "{}", err.error.message);
+
+        let (s, body) = call(&app, "POST", "/v1/agent/services", None, r#"{"name":"web"}"#).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert!(body.contains("must be JSON"), "{body}");
+        let (s, _) = call(&app, "POST", "/v1/agent/checks", json, "{not json").await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+
+        let reg = r#"{"name":"web","checks":[{"id":"beat","type":"ttl","ttl":"30s"}]}"#;
+        assert_eq!(call(&app, "POST", "/v1/agent/services", json, reg).await.0, StatusCode::CREATED);
+        // Reports take an optional body.
+        assert_eq!(call(&app, "PUT", "/v1/agent/checks/beat/pass", None, "").await.0, StatusCode::NO_CONTENT);
+        let note = r#"{"output":"slow"}"#;
+        assert_eq!(call(&app, "PUT", "/v1/agent/checks/beat/warn", json, note).await.0, StatusCode::NO_CONTENT);
+        let (s, body) = call(&app, "PUT", "/v1/agent/checks/beat/fail", json, "{oops").await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{body}");
+        let (s, body) = call(&app, "GET", "/v1/agent/services/web/definition", None, "").await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(body.contains(r#""ttl":"30s""#), "{body}");
+        let (s, _) = call(&app, "GET", "/v1/agent/services/nope/definition", None, "").await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
     }
 
     #[test]

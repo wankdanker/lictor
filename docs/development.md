@@ -7,6 +7,9 @@
   your distribution's package, or `./scripts/install-nats-server.sh v2.15.3 /tmp/nats`).
   Without it, NATS tests print "skipping" and pass.
 
+- For the web UI: Node.js 22.17 or newer (`ui/.nvmrc` names the version CI uses). Rust builds and
+  tests work without it; the binary then serves a "UI not built" page at `/ui`.
+
 ## Build and run
 
 ```sh
@@ -36,6 +39,35 @@ cargo test -p lictor-core                        # one crate
 
 Tests that need time to pass use `tokio::time::pause` (in-memory store) or short leases (NATS), so the whole suite runs in well under a minute.
 
+## Web UI
+
+The UI lives in `ui/` (SvelteKit, Svelte 5, TypeScript). `npm run build` writes it to `ui/build/app`,
+and `crates/lictor/build.rs` embeds whatever is there into the next `cargo build`.
+
+```sh
+cd ui
+npm ci
+npm run dev            # http://localhost:5173/ui, proxying /v1 to an agent on 127.0.0.1:7171
+                       # (start one with `cargo run -- agent --dev`; LICTOR_AGENT=http://host:port to change)
+npm run check          # svelte-check (types, a11y), warnings are errors
+npm run lint           # prettier --check (npm run format fixes)
+npm run test:unit      # vitest: unit tests (node) and component tests (headless Chromium)
+npm run build          # then `cargo build -p lictor` to embed it
+npm run test:e2e       # Playwright against two real `lictor agent --dev` processes (needs the build above)
+```
+
+The first component or end-to-end test run needs a browser: `npx playwright install chromium`.
+
+| Where | What |
+|---|---|
+| `ui/src/lib/*.spec.ts` | API client, NDJSON watch parsing, definition form conversion and validation, formatting. |
+| `ui/src/lib/components/*.svelte.spec.ts` | Components in a real browser (the service editor). |
+| `ui/tests/*.e2e.ts` | Every management flow against real agents, including one started with `--token`. |
+| `crates/lictor/src/ui.rs` | Serving: content types, caching, the app fallback, security headers. |
+
+`LICTOR_REQUIRE_UI=1` makes `cargo build` fail when the UI is not built (release builds set it).
+`LICTOR_UI_DIR` embeds a build from another directory.
+
 ## Code style
 
 - `cargo fmt --all` (config in `rustfmt.toml`) and `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
@@ -53,7 +85,8 @@ Tests that need time to pass use `tokio::time::pause` (in-memory store) or short
 | Test (macOS, Windows) | The whole suite against the latest NATS. |
 | Minimum Rust version | `cargo check` on the `rust-version` from `Cargo.toml`. |
 | Coverage | `cargo llvm-cov`; summary in the job page, `lcov.info` as an artifact. |
-| Package smoke test | Builds the static Linux binary, `.deb` and `.rpm`; installs the `.deb`. |
+| Web UI | Prettier, svelte-check, unit and component tests, then the end-to-end tests against the embedded build. |
+| Package smoke test | Builds the static Linux binary (with the UI), `.deb` and `.rpm`; installs the `.deb`; checks `/ui`. |
 
 ## Releasing
 
@@ -68,6 +101,7 @@ Tests that need time to pass use `tokio::time::pause` (in-memory store) or short
 | `x86_64-apple-darwin`, `aarch64-apple-darwin` | `.tar.gz` |
 | `x86_64-pc-windows-msvc` | `.zip` |
 
+The web UI is built once and embedded into every binary (the builds fail without it).
 It then publishes a GitHub release with `SHA256SUMS`, and a multi-arch image
 `ghcr.io/<owner>/lictor:<version>` (`linux/amd64`, `linux/arm64`).
 Run the workflow by hand (Actions, Release, Run workflow) to build everything without publishing.

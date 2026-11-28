@@ -44,6 +44,7 @@ lictor-store-nats = { workspace = true, features = ["testing"] }
 assert_cmd.workspace = true
 predicates.workspace = true
 tempfile.workspace = true
+tower.workspace = true
 
 [package.metadata.deb]
 maintainer = "Dan VerWeire"

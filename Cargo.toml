@@ -41,6 +41,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"]
 gethostname = "1"
 form_urlencoded = "1"
 
+tower = { version = "0.5", features = ["util"] }
 tempfile = "3"
 assert_cmd = "2"
 predicates = "3"

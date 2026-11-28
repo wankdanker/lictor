@@ -53,6 +53,8 @@ lictor agent --namespace prod --region us-east --advertise 10.0.1.5 --config-dir
 
 On `SIGTERM`/`Ctrl-C` the agent removes its membership (unless `--leave-on-shutdown=false`) and exits 0.
 
+The agent also serves the [web UI](ui.md) at `/ui` on its HTTP address; `--ui=false` turns it off.
+
 ### `lictor status`
 
 The agent's identity, connection and catalog state. With `--direct`, the catalog's state as seen from NATS.
@@ -69,6 +71,7 @@ Live nodes, with their service counts and remaining lease.
 | `services inspect NAME [filters]` | Every live instance, with address, metadata and checks. |
 | `services local` | Services registered on this agent (live or not). |
 | `services register ...` | Register a service on this agent (see below). |
+| `services export ID` | Print the stored definition of one of this agent's services, as JSON for `register --file`. |
 | `services deregister ID` | Remove one of this agent's services. |
 
 `services register` takes either a file or flags:

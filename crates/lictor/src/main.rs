@@ -8,6 +8,7 @@ mod commands;
 mod confdir;
 mod output;
 mod sys;
+mod ui;
 
 use std::io::Write;
 use std::process::ExitCode;

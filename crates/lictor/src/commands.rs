@@ -242,6 +242,13 @@ pub async fn run(path: &[String], v: &Values) -> CmdResult {
                     .collect()
             }))
         }
+        ["services", "export"] => {
+            let id = v.str("id");
+            let def =
+                reg.service_definition(id).await?.ok_or_else(|| RegistryError::NotFound(format!("service '{id}'")))?;
+            // Always JSON: the output is meant to be saved and passed back to `register --file x.json`.
+            Ok(format!("{}\n", serde_json::to_string_pretty(&def).expect("serialize definition")))
+        }
         ["services", "deregister"] => {
             let id = v.str("id");
             reg.deregister(id).await?;
