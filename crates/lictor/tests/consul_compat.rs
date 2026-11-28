@@ -215,7 +215,7 @@ fn start_pair() -> Pair {
 
     let agent = AgentProc::start(&["--dev", "--node-id", "host-a"]);
     let lictor_http = format!("http://{}", agent.logged_addr("Consul HTTP API listening"));
-    let lictor_dns: SocketAddr = agent.logged_addr("Consul DNS listening").parse().unwrap();
+    let lictor_dns: SocketAddr = agent.logged_addr("DNS listening").parse().unwrap();
 
     for s in services() {
         let r = http(reqwest::Method::PUT, &format!("{consul_http}/v1/agent/service/register"), Some(s.clone()));

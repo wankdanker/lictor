@@ -5,7 +5,7 @@
 # Then:
 #   http://127.0.0.1:7171/ui    agent-a: web UI (token: change-me, or $LICTOR_TOKEN)
 #   http://127.0.0.1:7172/ui    agent-b: web UI
-#   dig @127.0.0.1 -p 8600 nats.service.consul                     # Consul-compatible DNS (agent-a)
+#   dig @127.0.0.1 -p 8600 nats.service.lictor                     # DNS (agent-a; .consul works too)
 #   curl http://127.0.0.1:8500/v1/health/service/nats               # Consul-compatible HTTP (agent-a)
 #   lictor --http-addr 127.0.0.1:7171 --token change-me services list
 #   lictor --direct --nats-url nats://127.0.0.1:4222 nodes list

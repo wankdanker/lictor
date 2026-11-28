@@ -90,6 +90,7 @@ fn dns_config(v: &Values) -> Result<lictor_consul::dns::DnsConfig, CliError> {
     let secs = |var, what| required_duration(v, var, what).map(|d| d.as_secs().min(u32::MAX as u64) as u32);
     Ok(lictor_consul::dns::DnsConfig {
         domain: v.str("LICTOR_DNS_DOMAIN").to_string(),
+        alt_domain: opt(v, "LICTOR_DNS_ALT_DOMAIN").filter(|d| d != "disabled"),
         service_ttl: secs("LICTOR_DNS_SERVICE_TTL", "DNS service ttl")?,
         node_ttl: secs("LICTOR_DNS_NODE_TTL", "DNS node ttl")?,
         only_passing: v.bool("LICTOR_DNS_ONLY_PASSING"),
@@ -119,7 +120,8 @@ async fn start_consul(
             ))
         })?;
         let bound = udp.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| addr.to_string());
-        tracing::info!(addr = %bound, domain = %v.str("LICTOR_DNS_DOMAIN"), "Consul DNS listening");
+        let alias = opt(v, "LICTOR_DNS_ALT_DOMAIN").filter(|d| d != "disabled").unwrap_or_else(|| "none".into());
+        tracing::info!(addr = %bound, domain = %v.str("LICTOR_DNS_DOMAIN"), alias = %alias, "DNS listening");
         tasks.push(tokio::spawn(Arc::new(server).serve(udp, tcp)));
     }
     if let Some(addr) = listen_addr(v, "LICTOR_CONSUL_HTTP_ADDR", "--consul-http-addr")? {

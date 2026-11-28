@@ -74,14 +74,15 @@ Tags are free text up to 255 characters (spaces allowed, as in Consul; no contro
 | `--token` | none | Require `Authorization: Bearer <token>` on every API request. |
 | `--ui` | `true` | Serve the [web UI](ui.md) at `/ui`. |
 
-### Consul compatibility
+### DNS and Consul compatibility
 
 See [consul.md](consul.md). Both listeners use Consul's ports; `disabled` turns one off.
 
 | Option | Default | Meaning |
 |---|---|---|
 | `--dns-addr` | `127.0.0.1:8600` | Consul-compatible DNS, UDP and TCP. |
-| `--dns-domain` | `consul` | The domain answered (`web.service.consul`). |
+| `--dns-domain` | `lictor` | The primary DNS domain (`web.service.lictor`). |
+| `--dns-alt-domain` | `consul` | Alias answered the same way, for Consul clients (`web.service.consul`); `disabled` turns it off. |
 | `--dns-service-ttl`, `--dns-node-ttl` | `0s` | TTL of service and node records (Consul's default is 0). |
 | `--dns-only-passing` | `false` | Leave warning instances out of answers (critical ones always are). |
 | `--dns-udp-answer-limit` | `3` | Most answers over UDP when the query has no EDNS. |

@@ -1,5 +1,7 @@
-//! Consul-compatible DNS: `[tag.]name.service[.dc].consul`, RFC 2782 `_name._tag.service.consul`,
-//! `node.node.consul`, `hex.addr.dc.consul`. A, AAAA and SRV, over UDP and TCP.
+//! DNS: `[tag.]name.service[.dc].lictor`, RFC 2782 `_name._tag.service.lictor`, `node.node.lictor`,
+//! `hex.addr.dc.lictor`. A, AAAA and SRV, over UDP and TCP. The same names under `consul` (an
+//! alias, like Consul's `alt_domain`) keep Consul clients working; each answer uses the domain the
+//! question was asked in.
 //!
 //! The behavior follows Consul 1.22 as measured against a real agent (see `tests/consul_parity.rs`
 //! and `docs/consul.md`): TTL 0 by default, passing and warning instances only, answers shuffled,
@@ -24,8 +26,10 @@ use tokio::net::{TcpListener, TcpStream, UdpSocket};
 /// DNS settings. The defaults are Consul's.
 #[derive(Debug, Clone)]
 pub struct DnsConfig {
-    /// The domain answered for, `consul` by default.
+    /// The primary domain, `lictor` by default.
     pub domain: String,
+    /// A second domain answered the same way, `consul` by default (for Consul clients).
+    pub alt_domain: Option<String>,
     /// TTL of service records, in seconds.
     pub service_ttl: u32,
     /// TTL of node records, in seconds.
@@ -38,7 +42,14 @@ pub struct DnsConfig {
 
 impl Default for DnsConfig {
     fn default() -> Self {
-        DnsConfig { domain: "consul".into(), service_ttl: 0, node_ttl: 0, only_passing: false, udp_answer_limit: 3 }
+        DnsConfig {
+            domain: "lictor".into(),
+            alt_domain: Some("consul".into()),
+            service_ttl: 0,
+            node_ttl: 0,
+            only_passing: false,
+            udp_answer_limit: 3,
+        }
     }
 }
 
@@ -53,7 +64,8 @@ pub struct DnsServer {
     registry: Arc<dyn Registry>,
     cfg: DnsConfig,
     local: Local,
-    domain: Name,
+    /// The primary domain first, then the alias.
+    domains: Vec<Name>,
 }
 
 /// What a name inside the domain asks for.
@@ -178,10 +190,18 @@ struct Answer {
 
 impl DnsServer {
     pub fn new(registry: Arc<dyn Registry>, cfg: DnsConfig, local: Local) -> Result<Self, String> {
-        let domain = cfg.domain.trim_matches('.').to_ascii_lowercase();
-        let domain =
-            Name::from_ascii(format!("{domain}.")).map_err(|e| format!("invalid DNS domain '{}': {e}", cfg.domain))?;
-        Ok(DnsServer { registry, cfg, local, domain })
+        let parse = |d: &str| {
+            let d = d.trim_matches('.').to_ascii_lowercase();
+            Name::from_ascii(format!("{d}.")).map_err(|e| format!("invalid DNS domain '{d}': {e}"))
+        };
+        let mut domains = vec![parse(&cfg.domain)?];
+        if let Some(alt) = cfg.alt_domain.as_deref().filter(|d| !d.trim_matches('.').is_empty()) {
+            let alt = parse(alt)?;
+            if !domains.contains(&alt) {
+                domains.push(alt);
+            }
+        }
+        Ok(DnsServer { registry, cfg, local, domains })
     }
 
     /// Answer one DNS message.
@@ -206,19 +226,21 @@ impl DnsServer {
         response.add_query(query.clone());
 
         let lowered = query.name().to_lowercase();
-        if !self.domain.zone_of(&lowered) {
+        // The most specific domain the name is in (an alias may sit under the primary).
+        let Some(domain) = self.domains.iter().filter(|d| d.zone_of(&lowered)).max_by_key(|d| d.num_labels()).cloned()
+        else {
             meta.response_code = ResponseCode::Refused;
             response.metadata = meta;
             return response;
-        }
+        };
         meta.authoritative = true;
-        let skip = self.domain.num_labels() as usize;
+        let skip = domain.num_labels() as usize;
         let labels: Vec<String> = lowered.iter().map(|l| String::from_utf8_lossy(l).into_owned()).collect();
         let labels = &labels[..labels.len() - skip];
 
         let mut a = match parse(labels) {
-            Lookup::Apex => self.apex(&query),
-            Lookup::Service { name, tag, dc, ns } => self.service(&query, &name, tag.as_deref(), dc, ns).await,
+            Lookup::Apex => self.apex(&query, &domain),
+            Lookup::Service { name, tag, dc, ns } => self.service(&query, &domain, &name, tag.as_deref(), dc, ns).await,
             Lookup::Node { name, dc } => self.node(&query, &name, dc).await,
             Lookup::Addr(ip) => {
                 let mut a = Answer::default();
@@ -230,7 +252,7 @@ impl DnsServer {
             Lookup::Unknown => Answer { code: ResponseCode::NXDomain, ..Default::default() },
         };
         if a.answers.is_empty() && a.authorities.is_empty() {
-            a.authorities.push(self.soa());
+            a.authorities.push(self.soa(&domain));
         }
 
         // Without EDNS, UDP answers are cut to the limit (silently, as Consul does).
@@ -264,26 +286,26 @@ impl DnsServer {
         response
     }
 
-    fn soa(&self) -> Record {
+    fn soa(&self, domain: &Name) -> Record {
         let serial = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as u32).unwrap_or(0);
-        let child = |l: &str| Name::from_ascii(l).unwrap().append_domain(&self.domain).unwrap();
+        let child = |l: &str| Name::from_ascii(l).unwrap().append_domain(domain).unwrap();
         let soa = SOA::new(child("ns"), child("hostmaster"), serial, 3600, 600, 86400, 0);
-        Record::from_rdata(self.domain.clone(), 0, RData::SOA(soa))
+        Record::from_rdata(domain.clone(), 0, RData::SOA(soa))
     }
 
-    fn ns_name(&self) -> Name {
+    fn ns_name(&self, domain: &Name) -> Name {
         Name::from_ascii(format!("{}.node.{}", self.local.node_id, self.local.region))
-            .and_then(|n| n.append_domain(&self.domain))
-            .unwrap_or_else(|_| self.domain.clone())
+            .and_then(|n| n.append_domain(domain))
+            .unwrap_or_else(|_| domain.clone())
     }
 
-    fn apex(&self, query: &Query) -> Answer {
+    fn apex(&self, query: &Query, domain: &Name) -> Answer {
         let mut a = Answer::default();
-        let ns = Record::from_rdata(self.domain.clone(), 0, RData::NS(NS(self.ns_name())));
-        let glue = self.local.address.map(|ip| ip_record(self.ns_name(), 0, ip));
+        let ns = Record::from_rdata(domain.clone(), 0, RData::NS(NS(self.ns_name(domain))));
+        let glue = self.local.address.map(|ip| ip_record(self.ns_name(domain), 0, ip));
         match query.query_type() {
             RecordType::SOA => {
-                a.answers.push(self.soa());
+                a.answers.push(self.soa(domain));
                 a.authorities.push(ns);
                 a.additionals.extend(glue);
             }
@@ -325,6 +347,7 @@ impl DnsServer {
     async fn service(
         &self,
         query: &Query,
+        domain: &Name,
         name: &str,
         tag: Option<&str>,
         dc: Option<String>,
@@ -344,7 +367,7 @@ impl DnsServer {
                 let (target, extras) = match ip {
                     Some(ip) => {
                         let target = Name::from_ascii(format!("{}.addr.{}", hex(ip), inst.region))
-                            .and_then(|n| n.append_domain(&self.domain));
+                            .and_then(|n| n.append_domain(domain));
                         let Ok(target) = target else { continue };
                         (target.clone(), vec![ip_record(target, ttl, ip)])
                     }

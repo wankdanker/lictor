@@ -1,11 +1,11 @@
-# Consul compatibility
+# DNS and Consul compatibility
 
-Every agent answers Consul's DNS names and the read side of Consul's HTTP API from its local
-catalog, so programs that discover services through Consul keep working when Consul goes away:
+Every agent answers DNS and the read side of Consul's HTTP API from its local catalog, so programs
+that discover services through Consul keep working when Consul goes away:
 
 | | Default | |
 |---|---|---|
-| DNS | `127.0.0.1:8600` (UDP and TCP) | `web.service.consul`, `v2.web.service.consul`, SRV, nodes |
+| DNS | `127.0.0.1:8600` (UDP and TCP) | `web.service.lictor`, `v2.web.service.lictor`, SRV, nodes; the same names under `.consul` |
 | HTTP | `127.0.0.1:8500` | Catalog and health reads with blocking queries: enough for Prometheus `consul_sd_configs` |
 
 Services are registered with Lictor's own tools (`lictor services register`, `--config-dir` files,
@@ -14,7 +14,7 @@ implemented.
 
 The behavior below was measured against Consul 1.22.7, and `crates/lictor/tests/consul_compat.rs`
 keeps it that way: it registers the same services in a real Consul and in Lictor and compares the
-DNS and HTTP answers, then runs a real Prometheus against Lictor.
+DNS answers (under `.consul`) and HTTP answers, then runs a real Prometheus against Lictor.
 
 ## Mapping
 
@@ -30,22 +30,29 @@ DNS and HTTP answers, then runs a real Prometheus against Lictor.
 
 ## DNS
 
+Names live under `lictor` (`--dns-domain`). The same names under `consul` are an alias
+(`--dns-alt-domain`, like Consul's `alt_domain`) so Consul clients keep working; `disabled` turns
+the alias off. Each answer uses the domain it was asked in: SRV targets, SOA and NS of a
+`.consul` question are `.consul` names.
+
 ```text
-[tag.]<service>.service[.<datacenter>].consul      A, AAAA (and SRV)
-_<service>._<tag>.service[.<datacenter>].consul    SRV, RFC 2782 style (_tcp means any tag)
-<service>.service.<namespace>.ns.<datacenter>.dc.consul
-<node>.node[.<datacenter>].consul                  A, AAAA
-<hex-ip>.addr.<datacenter>.consul                  A, AAAA (the targets of SRV records)
-consul                                             SOA, NS
+[tag.]<service>.service[.<datacenter>].lictor      A, AAAA (and SRV)
+_<service>._<tag>.service[.<datacenter>].lictor    SRV, RFC 2782 style (_tcp means any tag)
+<service>.service.<namespace>.ns.<datacenter>.dc.lictor
+<node>.node[.<datacenter>].lictor                  A, AAAA
+<hex-ip>.addr.<datacenter>.lictor                  A, AAAA (the targets of SRV records)
+lictor                                             SOA, NS
 ```
 
 ```console
-$ dig @127.0.0.1 -p 8600 +short web.service.consul
+$ dig @127.0.0.1 -p 8600 +short web.service.lictor
 10.0.0.12
 10.0.0.11
-$ dig @127.0.0.1 -p 8600 +short v1.web.service.consul
+$ dig @127.0.0.1 -p 8600 +short v1.web.service.lictor
 10.0.0.12
-$ dig @127.0.0.1 -p 8600 +short _web._prometheus.service.consul SRV
+$ dig @127.0.0.1 -p 8600 +short _web._prometheus.service.lictor SRV
+1 1 8080 0a00000b.addr.dc1.lictor.
+$ dig @127.0.0.1 -p 8600 +short _web._prometheus.service.consul SRV     # the Consul alias
 1 1 8080 0a00000b.addr.dc1.consul.
 ```
 
@@ -63,10 +70,10 @@ What is returned, as in Consul:
 - **Names and tags are case-insensitive.**
 - **Unknown names** (services without healthy instances, unknown datacenters, prepared queries)
   get NXDOMAIN with the SOA; a known name without records of the asked type gets an empty NOERROR.
-- **Names outside the domain** get REFUSED: Lictor does not recurse. Point only the `consul`
-  domain at it (below).
+- **Names outside both domains** get REFUSED: Lictor does not recurse. Point only `lictor` and
+  `consul` at it (below).
 
-`--dns-domain` changes the domain (for example `lictor.internal`).
+`--dns-domain` and `--dns-alt-domain` change the domains (for example `lictor.internal`).
 
 ### Pointing the system resolver at it
 
@@ -75,12 +82,12 @@ What is returned, as in Consul:
 ```ini
 [Resolve]
 DNS=127.0.0.1:8600
-Domains=~consul
+Domains=~lictor ~consul
 ```
 
-then `sudo systemctl restart systemd-resolved`. Only names under `consul` go to Lictor.
+then `sudo systemctl restart systemd-resolved`. Only names under `lictor` and `consul` go to Lictor.
 
-**dnsmasq**: `server=/consul/127.0.0.1#8600`.
+**dnsmasq**: `server=/lictor/127.0.0.1#8600` and `server=/consul/127.0.0.1#8600`.
 
 **Docker containers** use the host's resolver configuration when it points at a reachable
 address. For containers to reach the agent directly, listen on the Docker bridge too

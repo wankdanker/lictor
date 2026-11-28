@@ -281,10 +281,43 @@ async fn udp_limits_and_tcp() {
 }
 
 #[tokio::test]
-async fn a_custom_domain() {
-    let e = env(DnsConfig { domain: "lictor.internal".into(), ..Default::default() }).await;
+async fn lictor_is_the_primary_domain_and_consul_an_alias() {
+    let e = env(DnsConfig::default()).await;
+    // The same answers under both domains...
+    for name in ["v1.web.service.lictor.", "v1.web.service.consul."] {
+        assert_eq!(data(&ask(&e, name, RecordType::A).await), set(&["10.0.0.12"]), "{name}");
+    }
+    // ...each in the domain it was asked in.
+    let m = ask(&e, "_web._v1.service.lictor.", RecordType::SRV).await;
+    assert_eq!(data(&m), set(&["1 1 8081 0a00000c.addr.dc1.lictor."]));
+    assert_eq!(m.additionals[0].name.to_ascii(), "0a00000c.addr.dc1.lictor.");
+    assert_eq!(
+        data(&ask(&e, "_web._v1.service.consul.", RecordType::SRV).await),
+        set(&["1 1 8081 0a00000c.addr.dc1.consul."])
+    );
+    assert_eq!(data(&ask(&e, "0a00000c.addr.dc1.lictor.", RecordType::A).await), set(&["10.0.0.12"]));
+    assert_eq!(data(&ask(&e, "host-a.node.lictor.", RecordType::A).await), set(&["127.0.0.1"]));
+    let soa = |m: &Message| m.authorities[0].data.to_string();
+    assert!(soa(&ask(&e, "nope.service.lictor.", RecordType::A).await).starts_with("ns.lictor. hostmaster.lictor. "));
+    assert!(soa(&ask(&e, "nope.service.consul.", RecordType::A).await).starts_with("ns.consul. hostmaster.consul. "));
+    assert_eq!(data(&ask(&e, "lictor.", RecordType::NS).await), set(&["host-a.node.dc1.lictor."]));
+    assert_eq!(data(&ask(&e, "consul.", RecordType::NS).await), set(&["host-a.node.dc1.consul."]));
+}
+
+#[tokio::test]
+async fn custom_domains_and_no_alias() {
+    let e = env(DnsConfig { domain: "lictor.internal".into(), alt_domain: None, ..Default::default() }).await;
     assert_eq!(data(&ask(&e, "v1.web.service.lictor.internal.", RecordType::A).await), set(&["10.0.0.12"]));
     assert_eq!(ask(&e, "web.service.consul.", RecordType::A).await.metadata.response_code, ResponseCode::Refused);
+    assert_eq!(ask(&e, "web.service.lictor.", RecordType::A).await.metadata.response_code, ResponseCode::Refused);
+
+    // An alias under the primary: the most specific domain wins.
+    let e =
+        env(DnsConfig { domain: "internal".into(), alt_domain: Some("lictor.internal".into()), ..Default::default() })
+            .await;
+    let m = ask(&e, "web.service.lictor.internal.", RecordType::SRV).await;
+    assert!(data(&m).iter().all(|t| t.ends_with(".addr.dc1.lictor.internal.")), "{:?}", data(&m));
+    assert_eq!(ask(&e, "web.service.internal.", RecordType::SRV).await.answers.len(), 5);
 }
 
 #[tokio::test]

@@ -10,9 +10,9 @@ answers "where is `web`?". It speaks Consul's DNS and discovery API without bein
 - **No servers of its own.** NATS JetStream stores, replicates and distributes the registry.
   There is no leader election, no gossip, and agents never talk to each other.
 - **Local answers.** Every agent keeps an in-memory copy of the catalog, so lookups never wait on the network.
-- **Consul-compatible discovery.** `v2.web.service.consul` over DNS (A, AAAA, SRV, tags in the
-  name), and the catalog and health API that Prometheus `consul_sd_configs` uses, with blocking
-  queries. Checked against a real Consul and a real Prometheus.
+- **DNS with tags in the name.** `v2.web.service.lictor` (A, AAAA, SRV), with every name also under
+  `.consul` for Consul clients. Plus the catalog and health API that Prometheus
+  `consul_sd_configs` uses, with blocking queries. Checked against a real Consul and Prometheus.
 - **A web UI included.** Every agent serves a management UI at `/ui`: browse the catalog, watch
   instances live, register and edit services, report checks.
 - **Health checks built in.** TCP, HTTP(S) and TTL checks, with thresholds and auto-deregistration.
@@ -47,7 +47,7 @@ $ lictor discover web --healthy -o json     # every command speaks JSON too
 Then open <http://127.0.0.1:7171/ui> for the [web UI](docs/ui.md), or ask over DNS and Consul's API:
 
 ```console
-$ dig @127.0.0.1 -p 8600 +short v2.web.service.consul
+$ dig @127.0.0.1 -p 8600 +short v2.web.service.lictor        # or v2.web.service.consul
 127.0.0.1
 $ curl -s 'http://127.0.0.1:8500/v1/health/service/web?passing'
 ```
@@ -165,7 +165,7 @@ to that node's current *generation*. Read [architecture.md](docs/architecture.md
 | [Configuration](docs/configuration.md) | Flags, `LICTOR_*` variables, the config file, service definitions |
 | [HTTP API](docs/http-api.md) | The agent's native `/v1` API |
 | [Web UI](docs/ui.md) | The management UI every agent serves at `/ui` |
-| [Consul compatibility](docs/consul.md) | DNS names, the discovery API, Prometheus, differences from Consul |
+| [DNS and Consul compatibility](docs/consul.md) | DNS names, the discovery API, Prometheus, differences from Consul |
 | [Architecture](docs/architecture.md) | Data model, leases, generations, consistency, failure handling |
 | [Storage backends](docs/backends.md) | The `Store` trait and how to replace NATS |
 | [Development](docs/development.md) | Building, testing, CI and releasing |

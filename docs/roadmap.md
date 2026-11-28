@@ -29,8 +29,8 @@
 
 - [x] Characterization against Consul 1.22.7 in Docker: the same services registered in both, DNS
   and HTTP answers compared (`crates/lictor/tests/consul_compat.rs`, CI job "Consul compatibility").
-- [x] Consul DNS on `127.0.0.1:8600`, UDP and TCP: `[tag.]name.service[.dc].consul`, RFC 2782
-  `_name._tag.service.consul`, `.ns`/`.dc` locality, `node.consul`, `addr.consul`; A, AAAA, SRV,
+- [x] DNS on `127.0.0.1:8600`, UDP and TCP, under `.lictor` with a `.consul` alias:
+  `[tag.]name.service[.dc].lictor`, RFC 2782 `_name._tag.service.lictor`, `.ns`/`.dc` locality, `node.consul`, `addr.consul`; A, AAAA, SRV,
   CNAME for host names, SOA and NS; Consul's TTLs, shuffling, UDP answer limit, truncation and
   negative answers.
 - [x] Consul HTTP reads on `127.0.0.1:8500`: catalog services, service, nodes and datacenters;
