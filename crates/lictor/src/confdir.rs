@@ -182,4 +182,17 @@ mod doc_examples {
         }
         assert!(checked >= 3, "found {checked} examples");
     }
+
+    /// The services the Docker Compose stack registers (deploy/docker/example-services).
+    #[test]
+    fn compose_example_services_parse() {
+        let files = [
+            ("nats.toml", include_str!("../../../deploy/docker/example-services/nats.toml")),
+            ("demo.toml", include_str!("../../../deploy/docker/example-services/demo.toml")),
+        ];
+        for (name, text) in files {
+            let regs = super::parse(text, false, name).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(regs.len(), 1, "{name}");
+        }
+    }
 }

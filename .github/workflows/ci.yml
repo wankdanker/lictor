@@ -197,6 +197,10 @@ jobs:
           systemctl cat lictor.service
           test -f /etc/lictor/lictor.conf
           getent passwd lictor
+      - name: The Docker Compose files are valid
+        run: |
+          docker compose -f deploy/docker/compose.yaml config -q
+          docker compose -f deploy/docker/compose.nats.yaml config -q
       - name: Inspect the .rpm
         run: |
           sudo apt-get install -y rpm

@@ -49,6 +49,9 @@ $ nats-server -js &                         # or any NATS cluster with JetStream
 $ lictor agent --nats-url nats://127.0.0.1:4222
 ```
 
+No `nats-server` installed? `docker compose -f deploy/docker/compose.nats.yaml up -d` runs one with
+JetStream on `127.0.0.1:4222`.
+
 Run an agent on every host. Each one registers the services of its host, runs their checks,
 and can discover services anywhere:
 
@@ -64,6 +67,23 @@ No agent on the machine? Read the registry straight from NATS:
 ```console
 $ lictor --direct --nats-url nats://nats:4222 services list
 ```
+
+## Try the whole stack with Docker
+
+```console
+$ docker compose -f deploy/docker/compose.yaml up -d --build
+```
+
+This starts NATS and two agents, all on localhost:
+
+| Port | |
+|---|---|
+| `7171`, `7172` | Web UI and API of `agent-a` and `agent-b`: <http://127.0.0.1:7171/ui> (token `change-me`) |
+| `4222` | NATS, for `lictor --direct` or another agent you run on the host |
+| `8222` | NATS monitoring |
+
+`agent-a` registers the example services in [`deploy/docker/example-services`](deploy/docker/example-services).
+Try `lictor --http-addr 127.0.0.1:7172 --token change-me discover nats`.
 
 ## Install
 

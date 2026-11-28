@@ -1,0 +1,12 @@
+# The NATS server itself, checked through its monitoring endpoint (a real, passing HTTP check).
+name = "nats"
+address = "nats"
+port = 4222
+tags = ["jetstream"]
+metadata = { role = "registry-backend" }
+
+[[checks]]
+type = "http"
+url = "http://nats:8222/healthz?js-enabled-only=true"
+interval = "5s"
+initial_status = "unknown"

@@ -1,0 +1,12 @@
+# A service whose health the application reports itself. It starts critical; report it from the
+# UI (This node › demo › Pass) or the CLI:
+#   lictor --http-addr 127.0.0.1:7171 --token change-me checks pass demo-heartbeat
+[[service]]
+name = "demo"
+port = 8080
+tags = ["v1"]
+
+[[service.checks]]
+id = "demo-heartbeat"
+type = "ttl"
+ttl = "10m"

@@ -10,6 +10,11 @@
 - For the web UI: Node.js 22.17 or newer (`ui/.nvmrc` names the version CI uses). Rust builds and
   tests work without it; the binary then serves a "UI not built" page at `/ui`.
 
+For a real NATS backend without installing `nats-server`:
+`docker compose -f deploy/docker/compose.nats.yaml up -d` (JetStream on `127.0.0.1:4222`, monitoring
+on `8222`), then `cargo run -- agent --nats-url nats://127.0.0.1:4222`.
+`deploy/docker/compose.yaml` runs NATS plus two agents built from source (UIs on 7171 and 7172).
+
 ## Build and run
 
 ```sh
