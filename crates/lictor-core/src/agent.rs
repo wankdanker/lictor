@@ -178,17 +178,15 @@ impl Agent {
     /// Registrations are kept and adopted by the next run.
     pub async fn shutdown(&self, leave: bool) {
         let inner = &self.inner;
-        if leave && !self.is_fenced() {
-            let rev = *inner.node_revision.lock().unwrap();
-            match inner.buckets.nodes.delete(&inner.node_key, rev).await {
-                Ok(()) => tracing::info!("left the registry"),
-                Err(e) => tracing::warn!(error = %e, "could not remove membership; it will expire"),
-            }
-        }
+        // Stop the heartbeat first: one landing between reading the revision and the delete
+        // would make the delete conflict and leave the node visible until its lease ran out.
         inner.cancel.cancel();
         let tasks: Vec<_> = inner.tasks.lock().unwrap().drain(..).collect();
         for t in tasks {
             let _ = t.await;
+        }
+        if leave && !self.is_fenced() {
+            inner.leave().await;
         }
     }
 }
@@ -284,6 +282,41 @@ impl Inner {
             Err(e) => tracing::warn!(error = %e, "heartbeat failed; retrying"),
         }
         true
+    }
+
+    /// Delete our membership record, as long as it is still our generation's.
+    async fn leave(&self) {
+        let nodes = &self.buckets.nodes;
+        let mut rev = *self.node_revision.lock().unwrap();
+        for _ in 0..WRITE_ATTEMPTS {
+            let err = match nodes.delete(&self.node_key, rev).await {
+                Ok(()) => {
+                    tracing::info!("left the registry");
+                    return;
+                }
+                Err(e) => e,
+            };
+            if !matches!(err, StoreError::Conflict { .. }) {
+                tracing::warn!(error = %err, "could not remove membership; it will expire");
+                return;
+            }
+            // The record changed since we last wrote it (a heartbeat cut short by shutdown).
+            match nodes.get(&self.node_key).await {
+                Ok(None) => return,
+                Ok(Some(e)) => match serde_json::from_slice::<NodeRecord>(&e.value) {
+                    Ok(r) if r.generation != self.generation => {
+                        tracing::info!(theirs = %r.generation, "membership belongs to a newer generation; leaving it");
+                        return;
+                    }
+                    _ => rev = Some(e.revision),
+                },
+                Err(e) => {
+                    tracing::warn!(error = %e, "could not remove membership; it will expire");
+                    return;
+                }
+            }
+        }
+        tracing::warn!("could not remove membership after {WRITE_ATTEMPTS} attempts; it will expire");
     }
 
     fn fence(&self) {
