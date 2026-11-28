@@ -13,6 +13,10 @@
 #   4222  NATS clients        8222  NATS monitoring (http://127.0.0.1:8222)
 #   7171  agent-a UI and API  7172  agent-b UI and API
 #
+# To reach the UIs from other devices on your network, publish the agents' ports on every
+# interface and pick a real token (NATS stays on localhost; it has no authentication here):
+#   LICTOR_BIND=0.0.0.0 LICTOR_TOKEN=$(openssl rand -hex 16) docker compose -f deploy/docker/compose.yaml up -d
+#
 # agent-a registers the services in deploy/docker/example-services at start, including the NATS
 # server itself with an HTTP check on its monitoring port. Data is kept in the `nats-data` volume;
 # `docker compose ... down -v` deletes it.
@@ -56,7 +60,7 @@ services:
     volumes:
       - ./example-services:/etc/lictor/conf.d:ro
     ports:
-      - "127.0.0.1:7171:7171"
+      - "${LICTOR_BIND:-127.0.0.1}:7171:7171"
 
   agent-b:
     <<: *agent
@@ -66,7 +70,7 @@ services:
       LICTOR_NODE_ID: agent-b
       LICTOR_HTTP_TOKEN: ${LICTOR_TOKEN:-change-me}
     ports:
-      - "127.0.0.1:7172:7171"
+      - "${LICTOR_BIND:-127.0.0.1}:7172:7171"
 
 volumes:
   nats-data:
