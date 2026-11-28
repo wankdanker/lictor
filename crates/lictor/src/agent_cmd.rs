@@ -118,7 +118,9 @@ pub async fn run(v: &Values) -> Result<(), CliError> {
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| CliError::invalid(format!("cannot listen on {addr}: {e}")))?;
-    tracing::info!(%addr, "HTTP API listening");
+    // Log the bound address, so `--http-addr 127.0.0.1:0` reports the port it got.
+    let bound = listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| addr.to_string());
+    tracing::info!(addr = %bound, "HTTP API listening");
     let registry: Arc<dyn Registry> = Arc::new(agent.clone());
     let app = crate::api::router(registry, token);
 

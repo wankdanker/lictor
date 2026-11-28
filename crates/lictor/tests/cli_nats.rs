@@ -170,8 +170,7 @@ fn health_checks_over_nats() {
 
 #[test]
 fn agent_reports_unreachable_nats() {
-    let addr = format!("127.0.0.1:{}", common::free_port());
-    let r: common::Run = common::lictor(&addr)
+    let r: common::Run = common::lictor("127.0.0.1:0")
         .args(["agent", "--nats-url", "nats://127.0.0.1:1", "--node-id", "x"])
         .output()
         .unwrap()

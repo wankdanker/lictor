@@ -22,9 +22,8 @@ pub fn lictor(addr: &str) -> Command {
     c
 }
 
-pub fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
-}
+/// An address where nothing listens (port 1 is privileged and unused on CI runners and dev machines).
+pub const NOTHING_LISTENS: &str = "127.0.0.1:1";
 
 pub struct Run {
     pub code: i32,
@@ -83,9 +82,11 @@ impl AgentProc {
     }
 
     pub fn start_in(data_dir: tempfile::TempDir, args: &[&str]) -> AgentProc {
-        let addr = format!("127.0.0.1:{}", free_port());
-        let log = data_dir.path().join(format!("agent-{}.log", addr.replace([':', '.'], "_")));
-        let child = lictor(&addr)
+        // Port 0: the agent picks a free port and logs it. Choosing one here and passing it in
+        // races with other tests, which may take the port before the agent binds it.
+        let n = std::fs::read_dir(data_dir.path()).map(|d| d.count()).unwrap_or(0);
+        let log = data_dir.path().join(format!("agent-{n}.log"));
+        let child = lictor("127.0.0.1:0")
             .arg("agent")
             .arg("--data-dir")
             .arg(data_dir.path())
@@ -94,20 +95,21 @@ impl AgentProc {
             .stderr(std::fs::File::create(&log).unwrap())
             .spawn()
             .expect("spawn agent");
-        let mut a = AgentProc { child, addr, data_dir, log };
-        a.wait_ready();
+        let mut a = AgentProc { child, addr: String::new(), data_dir, log };
+        a.addr = a.wait_ready();
         a
     }
 
-    fn wait_ready(&mut self) {
+    /// Wait for the agent's "HTTP API listening" log line and return the address it bound.
+    /// The HTTP API starts after the agent has (catalog loaded, membership claimed).
+    fn wait_ready(&mut self) -> String {
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
+            if let Some(addr) = listening_addr(&self.log_text()) {
+                return addr;
+            }
             if let Ok(Some(status)) = self.child.try_wait() {
                 panic!("agent exited early ({status}):\n{}", self.log_text());
-            }
-            // The HTTP API binds after the agent has started (catalog loaded, membership claimed).
-            if std::net::TcpStream::connect(&self.addr).is_ok() {
-                return;
             }
             assert!(Instant::now() < deadline, "agent did not become ready:\n{}", self.log_text());
             std::thread::sleep(Duration::from_millis(50));
@@ -159,4 +161,12 @@ pub fn eventually(what: &str, mut f: impl FnMut() -> bool) {
         assert!(Instant::now() < deadline, "timed out waiting for: {what}");
         std::thread::sleep(Duration::from_millis(100));
     }
+}
+
+/// The address in an "HTTP API listening addr=..." log line (text or JSON log format).
+fn listening_addr(log: &str) -> Option<String> {
+    let line = log.lines().find(|l| l.contains("HTTP API listening"))?;
+    let rest = line.split_once("addr=").or_else(|| line.split_once("\"addr\":\""))?.1;
+    let addr: String = rest.chars().take_while(|c| !c.is_whitespace() && *c != '"').collect();
+    (!addr.is_empty()).then_some(addr)
 }
