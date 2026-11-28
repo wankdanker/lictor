@@ -99,6 +99,7 @@ pub fn build() -> Cli {
     agent.opt("LICTOR_ADVERTISE", "advertise", "", "optional", "Address(es) to advertise, comma-separated (default: primary interface)").group("Agent");
     agent.opt("LICTOR_NODE_META", "node-meta", "", "optional", "Node metadata, comma-separated key=value pairs").group("Agent");
     agent.opt("LICTOR_CONFIG_DIR", "config-dir", "", "optional", "Directory of service definitions (*.toml, *.json) to register at start").rule("dir:exists").group("Agent");
+    agent.opt("LICTOR_UI", "ui", "", "true", "Serve the web UI at /ui on the HTTP API address").rule("bool").group("Agent");
     agent.opt("LICTOR_LEAVE_ON_SHUTDOWN", "leave-on-shutdown", "", "true", "Remove this node's membership on a clean shutdown").rule("bool").group("Agent");
     agent.opt("LICTOR_RECONCILE", "reconcile", "", "adopt", "What to do with registrations from this node's previous run").rule("choice:adopt,drop,keep").group("Agent");
     agent.opt("LICTOR_REPLICAS", "replicas", "", "1", "Replicas for buckets this agent creates (use 3 in a cluster)").rule("int:1-5").group("Registry");
@@ -145,6 +146,9 @@ pub fn build() -> Cli {
     reg.one_of(&["file", "name"]);
     reg.exclusive(&["file", "name"]);
     reg.effects(&["idempotent"]);
+    let export = services.command("export", "Print the stored definition of a local service (a file for 'register --file')");
+    export.arg("id", "Service id", "", "");
+    export.effects(&["read-only"]);
     let dereg = services.command("deregister", "Remove a service registered on this agent");
     dereg.arg("id", "Service id", "", "");
     dereg.effects(&["destructive", "idempotent"]);

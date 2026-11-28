@@ -1,0 +1,9 @@
+target/
+.git/
+.claude/
+dist/
+ui/node_modules/
+ui/.svelte-kit/
+ui/build/app/
+ui/test-results/
+ui/playwright-report/

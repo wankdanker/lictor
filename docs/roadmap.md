@@ -18,6 +18,11 @@
 - [x] Native HTTP API with bearer-token auth; streaming watch.
 - [x] CLI covering every operation, text and JSON output, stable exit codes, config file, env vars, shell completion.
 
+## Web UI (done)
+
+- [x] Management UI embedded in the binary at `/ui` (SvelteKit): overview, catalog, live instance view, nodes, register/edit/deregister services, add/remove/report checks, token prompt. See [ui.md](ui.md).
+- [x] `GET /v1/agent/services/{id}/definition` and `lictor services export` for editing stored definitions.
+
 ## Phase 2: Consul compatibility (next)
 
 Each adapter is its own crate depending only on `lictor_core::Registry`, enabled by a flag.

@@ -686,6 +686,23 @@ impl Registry for Agent {
         Ok(local.map(|l| self.inner.view(&l)))
     }
 
+    async fn service_definition(&self, service_id: &str) -> Result<Option<ServiceRegistration>> {
+        let local = self.inner.local.lock().unwrap().get(service_id).cloned();
+        Ok(local.map(|l| {
+            let r = l.record;
+            ServiceRegistration {
+                id: Some(r.service_id),
+                name: r.service_name,
+                address: Some(r.address),
+                port: r.port,
+                protocol: Some(r.protocol),
+                tags: r.tags,
+                metadata: r.metadata,
+                checks: r.checks,
+            }
+        }))
+    }
+
     async fn local_services(&self) -> Result<Vec<ServiceInstance>> {
         let local: Vec<Local> = self.inner.local.lock().unwrap().values().cloned().collect();
         let mut out: Vec<ServiceInstance> = local.iter().map(|l| self.inner.view(l)).collect();

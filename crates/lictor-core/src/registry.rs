@@ -29,6 +29,10 @@ pub trait Registry: Send + Sync {
     /// A service registered on this agent, whether or not it is currently discoverable.
     async fn get_service(&self, service_id: &str) -> Result<Option<ServiceInstance>>;
 
+    /// The stored definition of a service registered on this agent, with every default
+    /// applied (id, address, protocol and check ids). Re-registering it changes nothing.
+    async fn service_definition(&self, service_id: &str) -> Result<Option<ServiceRegistration>>;
+
     /// Services registered on this agent.
     async fn local_services(&self) -> Result<Vec<ServiceInstance>>;
 

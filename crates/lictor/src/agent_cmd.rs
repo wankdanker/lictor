@@ -122,7 +122,16 @@ pub async fn run(v: &Values) -> Result<(), CliError> {
     let bound = listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| addr.to_string());
     tracing::info!(addr = %bound, "HTTP API listening");
     let registry: Arc<dyn Registry> = Arc::new(agent.clone());
-    let app = crate::api::router(registry, token);
+    let mut app = crate::api::router(registry, token);
+    if v.bool("LICTOR_UI") {
+        // Added after the API's token layer: the UI's files are public, its API calls are not.
+        app = app.merge(crate::ui::router());
+        if crate::ui::embedded() {
+            tracing::info!(url = %format!("http://{bound}{}", crate::ui::BASE), "web UI");
+        } else {
+            tracing::info!("web UI not built into this binary; see docs/ui.md");
+        }
+    }
 
     let stopped = agent.clone();
     let server = axum::serve(listener, app).with_graceful_shutdown(async move {

@@ -248,6 +248,34 @@ async fn agents_see_each_other() {
     assert_eq!(a.local_services().await.unwrap().len(), 1, "local is only our own");
 }
 
+/// The stored definition has every default filled in, and registering it again is a no-op.
+#[tokio::test(start_paused = true)]
+async fn service_definition_round_trips() {
+    let store = MemoryStore::new();
+    let a = agent(&store, "node1").await;
+    let mut reg = web(8080);
+    reg.metadata.insert("shard".into(), "4".into());
+    reg.checks.push(ttl_check("", 30));
+    a.register(reg).await.unwrap();
+
+    let def = a.service_definition("web").await.unwrap().expect("definition");
+    assert_eq!(def.id.as_deref(), Some("web"));
+    assert_eq!(def.address.as_deref(), Some("10.0.0.5"));
+    assert_eq!(def.protocol.as_deref(), Some("tcp"));
+    assert_eq!(def.tags, ["v2"]);
+    assert_eq!(def.metadata["shard"], "4");
+    assert_eq!(def.checks.len(), 1);
+    assert_eq!(def.checks[0].id, "service:web");
+    assert!(matches!(def.checks[0].kind, CheckKind::Ttl { ttl } if ttl == Duration::from_secs(30)));
+
+    let before = a.get_service("web").await.unwrap().unwrap();
+    a.register(def.clone()).await.unwrap();
+    assert_eq!(a.service_definition("web").await.unwrap(), Some(def));
+    let after = a.get_service("web").await.unwrap().unwrap();
+    assert_eq!((after.address, after.port, after.tags), (before.address, before.port, before.tags));
+    assert!(a.service_definition("nope").await.unwrap().is_none());
+}
+
 #[tokio::test(start_paused = true)]
 async fn graceful_leave_hides_services_immediately() {
     let store = MemoryStore::new();

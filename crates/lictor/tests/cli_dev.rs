@@ -96,6 +96,23 @@ fn filters() {
 }
 
 #[test]
+fn export_prints_a_definition_that_registers_again() {
+    let a = AgentProc::start(&["--dev"]);
+    a.run(&["services", "register", "--name", "web", "--port", "8080", "-t", "v2", "--check-ttl", "30s"]).ok();
+    let def = a.run(&["services", "export", "web"]).ok();
+    let json: serde_json::Value = serde_json::from_str(&def.stdout).unwrap();
+    assert_eq!(json["id"], "web");
+    assert_eq!(json["port"], 8080);
+    assert_eq!(json["checks"][0]["id"], "service:web");
+    assert_eq!(json["checks"][0]["ttl"], "30s");
+
+    a.run(&["services", "deregister", "web"]).ok();
+    run_stdin(&a.addr, &["services", "register", "--file", "-"], &def.stdout).ok();
+    assert_eq!(a.run(&["services", "export", "web"]).ok().stdout, def.stdout);
+    assert_eq!(a.run(&["services", "export", "nope"]).code, 2);
+}
+
+#[test]
 fn register_from_files_and_stdin() {
     let a = AgentProc::start(&["--dev"]);
     let dir = tempfile::tempdir().unwrap();
@@ -320,4 +337,36 @@ fn sigterm_shuts_down_cleanly() {
     let mut a = AgentProc::start(&["--dev"]);
     assert_eq!(a.terminate(), 0);
     assert!(a.log_text().contains("left the registry"), "{}", a.log_text());
+}
+
+/// A bare HTTP GET; returns the status code and the body.
+fn http_get(addr: &str, path: &str) -> (u16, String) {
+    use std::io::{Read, Write};
+    let mut s = std::net::TcpStream::connect(addr).unwrap();
+    write!(s, "GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n").unwrap();
+    let mut response = String::new();
+    s.read_to_string(&mut response).unwrap();
+    let status = response.split_whitespace().nth(1).unwrap().parse().unwrap();
+    let body = response.split_once("\r\n\r\n").map(|(_, b)| b.to_string()).unwrap_or_default();
+    (status, body)
+}
+
+#[test]
+fn web_ui_is_served_unless_disabled() {
+    // With a token: the UI's files are public, the API is not.
+    let a = AgentProc::start(&["--dev", "--token", "s3cret"]);
+    let (status, body) = http_get(&a.addr, "/ui/services/web");
+    // 200 with the app, or 404 with build instructions when the UI was not built into this binary.
+    match status {
+        200 => assert!(body.contains("_app/"), "{body}"),
+        404 => assert!(body.contains("npm --prefix ui run build"), "{body}"),
+        other => panic!("unexpected status {other}: {body}"),
+    }
+    assert_eq!(http_get(&a.addr, "/").0, 307);
+    assert_eq!(http_get(&a.addr, "/v1/status").0, 401);
+
+    let b = AgentProc::start(&["--dev", "--ui=false"]);
+    let (status, body) = http_get(&b.addr, "/ui/services/web");
+    assert_eq!(status, 404);
+    assert!(body.contains("no such endpoint"), "{body}");
 }

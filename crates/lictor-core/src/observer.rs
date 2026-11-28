@@ -66,6 +66,9 @@ impl Registry for Observer {
     async fn get_service(&self, _: &str) -> Result<Option<ServiceInstance>> {
         read_only()
     }
+    async fn service_definition(&self, _: &str) -> Result<Option<ServiceRegistration>> {
+        read_only()
+    }
     async fn local_services(&self) -> Result<Vec<ServiceInstance>> {
         read_only()
     }
