@@ -57,6 +57,21 @@ fn text(status: StatusCode, body: &str) -> Response {
     (status, [(header::CONTENT_TYPE, "text/plain; charset=utf-8")], body.to_string()).into_response()
 }
 
+/// An error answer: a status and a plain-text message, as Consul sends them.
+struct Reject(StatusCode, String);
+
+impl Reject {
+    fn new(status: StatusCode, message: &str) -> Self {
+        Reject(status, message.to_string())
+    }
+}
+
+impl IntoResponse for Reject {
+    fn into_response(self) -> Response {
+        text(self.0, &self.1)
+    }
+}
+
 /// Query parameters, keeping repeated keys (`tag=a&tag=b`).
 struct Params(Vec<(String, String)>);
 
@@ -109,13 +124,13 @@ const MAX_WAIT: Duration = Duration::from_secs(600);
 impl Ctx {
     /// Run a blocking query: return at once without `?index`, else when the catalog moves past it
     /// or `?wait` (default 5m, at most 10m, plus up to 1/16 jitter like Consul) runs out.
-    async fn block(&self, p: &Params) -> Result<u64, Response> {
+    async fn block(&self, p: &Params) -> Result<u64, Reject> {
         let index = match p.get("index") {
-            Some(i) => i.parse::<u64>().map_err(|_| text(StatusCode::BAD_REQUEST, "Invalid index"))?,
+            Some(i) => i.parse::<u64>().map_err(|_| Reject::new(StatusCode::BAD_REQUEST, "Invalid index"))?,
             None => 0,
         };
         let wait = match p.get("wait") {
-            Some(w) => go_duration(w).ok_or_else(|| text(StatusCode::BAD_REQUEST, "Invalid wait time"))?,
+            Some(w) => go_duration(w).ok_or_else(|| Reject::new(StatusCode::BAD_REQUEST, "Invalid wait time"))?,
             None => DEFAULT_WAIT,
         };
         let wait = if index == 0 {
@@ -127,17 +142,17 @@ impl Ctx {
         self.registry
             .wait_for_change(index, wait)
             .await
-            .map_err(|e| text(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))
+            .map_err(|e| Reject::new(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))
     }
 
     /// The datacenter asked for (`?dc=`, default this agent's), which must be one the catalog knows.
-    async fn scope(&self, p: &Params) -> Result<RegistryScope, Response> {
+    async fn scope(&self, p: &Params) -> Result<RegistryScope, Reject> {
         let dc = p.get("dc").filter(|d| !d.is_empty()).map(str::to_string);
         if let Some(dc) = &dc
             && dc != &self.local.region
             && !self.datacenters().await.contains(dc)
         {
-            return Err(text(StatusCode::INTERNAL_SERVER_ERROR, "No path to datacenter"));
+            return Err(Reject::new(StatusCode::INTERNAL_SERVER_ERROR, "No path to datacenter"));
         }
         Ok(RegistryScope {
             namespace: Some(self.local.namespace.clone()),
@@ -413,9 +428,9 @@ async fn datacenters(State(c): State<Ctx>, RawQuery(q): RawQuery) -> Response {
 }
 
 /// Shared prologue of catalog and health reads: reject what is not supported, block, pick the scope.
-async fn read(c: &Ctx, p: &Params) -> Result<(u64, RegistryScope), Response> {
+async fn read(c: &Ctx, p: &Params) -> Result<(u64, RegistryScope), Reject> {
     if p.get("filter").is_some_and(|f| !f.is_empty()) {
-        return Err(text(
+        return Err(Reject::new(
             StatusCode::BAD_REQUEST,
             "filter expressions (?filter=) are not supported by Lictor; use ?tag= and ?node-meta=",
         ));
@@ -429,7 +444,7 @@ async fn catalog_nodes(State(c): State<Ctx>, RawQuery(q): RawQuery) -> Response 
     let p = Params::parse(&q);
     let (index, scope) = match read(&c, &p).await {
         Ok(r) => r,
-        Err(e) => return e,
+        Err(e) => return e.into_response(),
     };
     let meta: Vec<(&str, &str)> = p.all("node-meta").filter_map(|m| m.split_once(':')).collect();
     let mut nodes = c.registry.list_nodes(scope).await.unwrap_or_default();
@@ -442,7 +457,7 @@ async fn catalog_services(State(c): State<Ctx>, RawQuery(q): RawQuery) -> Respon
     let p = Params::parse(&q);
     let (index, scope) = match read(&c, &p).await {
         Ok(r) => r,
-        Err(e) => return e,
+        Err(e) => return e.into_response(),
     };
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
     if p.has("node-meta") {
@@ -466,7 +481,7 @@ async fn catalog_service(State(c): State<Ctx>, Path(name): Path<String>, RawQuer
     let p = Params::parse(&q);
     let (index, scope) = match read(&c, &p).await {
         Ok(r) => r,
-        Err(e) => return e,
+        Err(e) => return e.into_response(),
     };
     let found = c.instances(&name, &p, scope).await;
     reply(Value::Array(found.iter().map(catalog_entry).collect()), Some(index), &p)
@@ -476,7 +491,7 @@ async fn health_service(State(c): State<Ctx>, Path(name): Path<String>, RawQuery
     let p = Params::parse(&q);
     let (index, scope) = match read(&c, &p).await {
         Ok(r) => r,
-        Err(e) => return e,
+        Err(e) => return e.into_response(),
     };
     let found = c.instances(&name, &p, scope).await;
     reply(Value::Array(found.iter().map(health_entry).collect()), Some(index), &p)
