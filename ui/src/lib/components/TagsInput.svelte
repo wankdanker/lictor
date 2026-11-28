@@ -11,10 +11,10 @@
 
 	let draft = $state('');
 
-	/** Add what was typed; commas and spaces separate several tags. */
+	/** Add what was typed as one tag (tags may contain spaces, as in Consul). */
 	function commit() {
-		const added = draft.split(/[\s,]+/).filter((t) => t && !tags.includes(t));
-		tags.push(...added);
+		const tag = draft.trim();
+		if (tag && !tags.includes(tag)) tags.push(tag);
 		draft = '';
 	}
 

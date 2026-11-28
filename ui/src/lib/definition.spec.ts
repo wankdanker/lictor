@@ -98,7 +98,7 @@ describe('validation', () => {
 		const form = emptyService();
 		form.name = 'bad name';
 		form.port = 70000;
-		form.tags = ['ok', 'has space'];
+		form.tags = ['ok', 'has\ttab', 'dma-New York'];
 		form.metadata = [
 			{ key: 'a', value: '1' },
 			{ key: 'a', value: '2' },

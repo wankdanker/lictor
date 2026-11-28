@@ -4,12 +4,15 @@
 
 In ancient Rome, *lictors* walked ahead of the consul and carried out his authority.
 Lictor does the same job for your services: it registers them, checks their health and
-answers "where is `web`?". It is built to speak Consul's protocols (coming soon) without being Consul.
+answers "where is `web`?". It speaks Consul's DNS and discovery API without being Consul.
 
 - **One small binary.** Agent, CLI and HTTP API in a single static executable (about 9 MB, about 12 MB of RAM).
 - **No servers of its own.** NATS JetStream stores, replicates and distributes the registry.
   There is no leader election, no gossip, and agents never talk to each other.
 - **Local answers.** Every agent keeps an in-memory copy of the catalog, so lookups never wait on the network.
+- **DNS with tags in the name.** `v2.web.service.lictor` (A, AAAA, SRV), with every name also under
+  `.consul` for Consul clients. Plus the catalog and health API that Prometheus
+  `consul_sd_configs` uses, with blocking queries. Checked against a real Consul and Prometheus.
 - **A web UI included.** Every agent serves a management UI at `/ui`: browse the catalog, watch
   instances live, register and edit services, report checks.
 - **Health checks built in.** TCP, HTTP(S) and TTL checks, with thresholds and auto-deregistration.
@@ -18,8 +21,9 @@ answers "where is `web`?". It is built to speak Consul's protocols (coming soon)
 - **Swappable backend.** The core talks to a small `Store` trait. NATS is one implementation;
   an in-memory store (used by tests and `--dev`) is another.
 
-> **Status:** early. The core registry, health checks, CLI and native HTTP API work and are tested
-> against real NATS servers. Consul-compatible HTTP and DNS come next. See the [roadmap](docs/roadmap.md).
+> **Status:** early. The core registry, health checks, CLI, native HTTP API, web UI and
+> Consul-compatible DNS and discovery API work, and are tested against real NATS, Consul and
+> Prometheus servers. See the [roadmap](docs/roadmap.md).
 
 ## Try it in 30 seconds
 
@@ -40,7 +44,15 @@ web      web  dev   127.0.0.1:8080  passing  v2    default/dc1
 $ lictor discover web --healthy -o json     # every command speaks JSON too
 ```
 
-Then open <http://127.0.0.1:7171/ui> for the [web UI](docs/ui.md).
+Then open <http://127.0.0.1:7171/ui> for the [web UI](docs/ui.md), or ask over DNS and Consul's API:
+
+```console
+$ dig @127.0.0.1 -p 8600 +short v2.web.service.lictor        # or v2.web.service.consul
+127.0.0.1
+$ curl -s 'http://127.0.0.1:8500/v1/health/service/web?passing'
+```
+
+See [Consul compatibility](docs/consul.md), including moving a Prometheus `consul_sd_configs` job over.
 
 ## For real: with NATS
 
@@ -81,6 +93,9 @@ This starts NATS and two agents, all on localhost:
 | `7171`, `7172` | Web UI and API of `agent-a` and `agent-b`: <http://127.0.0.1:7171/ui> (token `change-me`) |
 | `4222` | NATS, for `lictor --direct` or another agent you run on the host |
 | `8222` | NATS monitoring |
+
+To open the UIs from another device on your network, start it with
+`LICTOR_BIND=0.0.0.0 LICTOR_TOKEN=<a real token>` (NATS stays on localhost).
 
 `agent-a` registers the example services in [`deploy/docker/example-services`](deploy/docker/example-services).
 Try `lictor --http-addr 127.0.0.1:7172 --token change-me discover nats`.
@@ -150,6 +165,7 @@ to that node's current *generation*. Read [architecture.md](docs/architecture.md
 | [Configuration](docs/configuration.md) | Flags, `LICTOR_*` variables, the config file, service definitions |
 | [HTTP API](docs/http-api.md) | The agent's native `/v1` API |
 | [Web UI](docs/ui.md) | The management UI every agent serves at `/ui` |
+| [DNS and Consul compatibility](docs/consul.md) | DNS names, the discovery API, Prometheus, differences from Consul |
 | [Architecture](docs/architecture.md) | Data model, leases, generations, consistency, failure handling |
 | [Storage backends](docs/backends.md) | The `Store` trait and how to replace NATS |
 | [Development](docs/development.md) | Building, testing, CI and releasing |

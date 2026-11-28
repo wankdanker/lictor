@@ -41,6 +41,8 @@ cargo test -p lictor-core                        # one crate
 | `crates/lictor/tests/nats_registry.rs` | Several agents on a real `nats-server`: expiry, fencing, NATS restarts, watches, concurrency. |
 | `crates/lictor/tests/cli_dev.rs` | The real binary end to end against `lictor agent --dev` (runs on every OS). |
 | `crates/lictor/tests/cli_nats.rs` | Several `lictor agent` processes on a real `nats-server`, driven by the CLI. |
+| `crates/lictor-consul/tests/` | Consul DNS (real UDP/TCP sockets) and HTTP adapters against an agent: names, records, limits, filters, blocking queries. |
+| `crates/lictor/tests/consul_compat.rs` | With `LICTOR_DOCKER_TESTS=1`: the same services in Consul 1.22 and Lictor, DNS and HTTP answers compared; a real Prometheus discovering targets through Lictor. |
 
 Tests that need time to pass use `tokio::time::pause` (in-memory store) or short leases (NATS), so the whole suite runs in well under a minute.
 
@@ -90,6 +92,7 @@ The first component or end-to-end test run needs a browser: `npx playwright inst
 | Test (macOS, Windows) | The whole suite against the latest NATS. |
 | Minimum Rust version | `cargo check` on the `rust-version` from `Cargo.toml`. |
 | Coverage | `cargo llvm-cov`; summary in the job page, `lcov.info` as an artifact. |
+| Consul compatibility | `consul_compat.rs` against Consul and Prometheus containers. |
 | Web UI | Prettier, svelte-check, unit and component tests, then the end-to-end tests against the embedded build. |
 | Package smoke test | Builds the static Linux binary (with the UI), `.deb` and `.rpm`; installs the `.deb`; checks `/ui`. |
 

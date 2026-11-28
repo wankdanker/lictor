@@ -169,6 +169,7 @@ mod doc_examples {
         let docs = [
             ("README.md", include_str!("../../../README.md")),
             ("docs/configuration.md", include_str!("../../../docs/configuration.md")),
+            ("docs/consul.md", include_str!("../../../docs/consul.md")),
         ];
         let mut checked = 0;
         for (name, text) in docs {

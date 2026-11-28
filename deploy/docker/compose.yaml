@@ -5,6 +5,8 @@
 # Then:
 #   http://127.0.0.1:7171/ui    agent-a: web UI (token: change-me, or $LICTOR_TOKEN)
 #   http://127.0.0.1:7172/ui    agent-b: web UI
+#   dig @127.0.0.1 -p 8600 nats.service.lictor                     # DNS (agent-a; .consul works too)
+#   curl http://127.0.0.1:8500/v1/health/service/nats               # Consul-compatible HTTP (agent-a)
 #   lictor --http-addr 127.0.0.1:7171 --token change-me services list
 #   lictor --direct --nats-url nats://127.0.0.1:4222 nodes list
 #   lictor agent --nats-url nats://127.0.0.1:4222 --http-addr 127.0.0.1:7173    # join from the host
@@ -12,6 +14,12 @@
 # Ports (bound to localhost only):
 #   4222  NATS clients        8222  NATS monitoring (http://127.0.0.1:8222)
 #   7171  agent-a UI and API  7172  agent-b UI and API
+#   8500  agent-a Consul HTTP 8600  agent-a Consul DNS (UDP and TCP)
+# A Consul already on 8500/8600? LICTOR_CONSUL_HTTP_PORT=8501 LICTOR_DNS_PORT=8601 moves agent-a's.
+#
+# To reach the UIs from other devices on your network, publish the agents' ports on every
+# interface and pick a real token (NATS stays on localhost; it has no authentication here):
+#   LICTOR_BIND=0.0.0.0 LICTOR_TOKEN=$(openssl rand -hex 16) docker compose -f deploy/docker/compose.yaml up -d
 #
 # agent-a registers the services in deploy/docker/example-services at start, including the NATS
 # server itself with an HTTP check on its monitoring port. Data is kept in the `nats-data` volume;
@@ -53,10 +61,15 @@ services:
       # The API listens on all interfaces inside the container, so it needs a token.
       LICTOR_HTTP_TOKEN: ${LICTOR_TOKEN:-change-me}
       LICTOR_CONFIG_DIR: /etc/lictor/conf.d
+      LICTOR_CONSUL_HTTP_ADDR: 0.0.0.0:8500
+      LICTOR_DNS_ADDR: 0.0.0.0:8600
     volumes:
       - ./example-services:/etc/lictor/conf.d:ro
     ports:
-      - "127.0.0.1:7171:7171"
+      - "${LICTOR_BIND:-127.0.0.1}:7171:7171"
+      - "${LICTOR_BIND:-127.0.0.1}:${LICTOR_CONSUL_HTTP_PORT:-8500}:8500"
+      - "${LICTOR_BIND:-127.0.0.1}:${LICTOR_DNS_PORT:-8600}:8600/udp"
+      - "${LICTOR_BIND:-127.0.0.1}:${LICTOR_DNS_PORT:-8600}:8600/tcp"
 
   agent-b:
     <<: *agent
@@ -66,7 +79,7 @@ services:
       LICTOR_NODE_ID: agent-b
       LICTOR_HTTP_TOKEN: ${LICTOR_TOKEN:-change-me}
     ports:
-      - "127.0.0.1:7172:7171"
+      - "${LICTOR_BIND:-127.0.0.1}:7172:7171"
 
 volumes:
   nats-data:

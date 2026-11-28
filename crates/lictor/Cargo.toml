@@ -21,6 +21,7 @@ lictor-types.workspace = true
 lictor-store.workspace = true
 lictor-store-nats.workspace = true
 lictor-core.workspace = true
+lictor-consul.workspace = true
 clyops.workspace = true
 async-trait.workspace = true
 axum.workspace = true
@@ -45,6 +46,7 @@ assert_cmd.workspace = true
 predicates.workspace = true
 tempfile.workspace = true
 tower.workspace = true
+hickory-proto.workspace = true
 
 [package.metadata.deb]
 maintainer = "Dan VerWeire"

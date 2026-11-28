@@ -781,6 +781,10 @@ impl Registry for Agent {
         Ok(watch_query(self.inner.catalog.clone(), query))
     }
 
+    async fn wait_for_change(&self, index: u64, timeout: Duration) -> Result<u64> {
+        Ok(crate::registry::wait_for_change(&self.inner.catalog, index, timeout).await)
+    }
+
     async fn status(&self) -> Result<AgentStatus> {
         let i = &self.inner;
         let scope = RegistryScope { namespace: Some(i.cfg.namespace.clone()), region: Some(i.cfg.region.clone()) };

@@ -121,6 +121,21 @@ jobs:
             ui/test-results/
           retention-days: 7
 
+  consul:
+    name: Consul compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Pull the reference images
+        run: docker pull hashicorp/consul:1.22.7 && docker pull prom/prometheus:v3.16.0
+      # The same services registered in Consul and in Lictor, DNS and HTTP answers compared; then a
+      # real Prometheus with a consul_sd_configs job discovering targets through a Lictor agent.
+      - run: cargo test -p lictor --test consul_compat --locked -- --nocapture
+        env:
+          LICTOR_DOCKER_TESTS: "1"
+
   msrv:
     name: Minimum Rust version
     runs-on: ubuntu-latest

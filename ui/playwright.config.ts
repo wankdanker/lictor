@@ -26,6 +26,11 @@ function agent(port: number, ...extra: string[]) {
 			`127.0.0.1:${port}`,
 			'--data-dir',
 			dataDir,
+			// Two agents cannot share Consul's ports (and a real Consul may hold them).
+			'--dns-addr',
+			'127.0.0.1:0',
+			'--consul-http-addr',
+			'127.0.0.1:0',
 			...extra
 		]
 			.map((a) => JSON.stringify(a))

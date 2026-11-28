@@ -248,6 +248,27 @@ async fn agents_see_each_other() {
     assert_eq!(a.local_services().await.unwrap().len(), 1, "local is only our own");
 }
 
+#[tokio::test(start_paused = true)]
+async fn wait_for_change_blocks_until_the_catalog_changes() {
+    let store = MemoryStore::new();
+    let a = agent(&store, "node1").await;
+    let now = a.status().await.unwrap().catalog_index;
+    assert_eq!(a.wait_for_change(now - 1, Duration::from_secs(60)).await.unwrap(), now, "already past");
+
+    // Nothing changes (heartbeats included): the wait runs to its timeout.
+    let start = tokio::time::Instant::now();
+    assert_eq!(a.wait_for_change(now, Duration::from_secs(60)).await.unwrap(), now);
+    assert!(start.elapsed() >= Duration::from_secs(60));
+
+    // A registration wakes it.
+    let b = a.clone();
+    let waiter = tokio::spawn(async move { b.wait_for_change(now, Duration::from_secs(600)).await.unwrap() });
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    a.register(web(80)).await.unwrap();
+    let woke = tokio::time::timeout(Duration::from_secs(1), waiter).await.expect("woken").unwrap();
+    assert!(woke > now);
+}
+
 /// The stored definition has every default filled in, and registering it again is a no-op.
 #[tokio::test(start_paused = true)]
 async fn service_definition_round_trips() {

@@ -93,6 +93,10 @@ impl Registry for Observer {
     async fn watch(&self, query: DiscoveryQuery) -> Result<RegistryEventStream> {
         Ok(watch_query(self.catalog.clone(), query))
     }
+    async fn wait_for_change(&self, index: u64, timeout: std::time::Duration) -> Result<u64> {
+        Ok(crate::registry::wait_for_change(&self.catalog, index, timeout).await)
+    }
+
     async fn status(&self) -> Result<AgentStatus> {
         let (catalog_nodes, catalog_services) = self.catalog.counts();
         Ok(AgentStatus {

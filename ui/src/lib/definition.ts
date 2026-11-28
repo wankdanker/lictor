@@ -289,7 +289,7 @@ export function validate(f: ServiceForm): Errors {
 		const tag = t.trim();
 		if (!tag) return;
 		if (tag.length > MAX_TAG) set(`tags.${i}`, `tag is longer than ${MAX_TAG} characters`);
-		else if (/[\s\p{Cc}]/u.test(tag)) set(`tags.${i}`, 'tags must not contain whitespace');
+		else if (/\p{Cc}/u.test(tag)) set(`tags.${i}`, 'tags must not contain control characters');
 	});
 	const keys = f.metadata.filter((p) => p.key.trim() !== '');
 	if (keys.length > MAX_META_PAIRS) set('metadata', `at most ${MAX_META_PAIRS} metadata pairs`);
