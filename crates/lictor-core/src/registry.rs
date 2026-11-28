@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::catalog::Catalog;
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use lictor_types::{
@@ -59,4 +60,16 @@ pub trait Registry: Send + Sync {
 
     /// Operational status.
     async fn status(&self) -> Result<AgentStatus>;
+
+    /// Wait until the catalog changes after `index` (a value of [`AgentStatus::catalog_index`]),
+    /// or until `timeout` passes. Returns the catalog index at that point. For long polling
+    /// (Consul-style blocking queries): the index moves only when the catalog's content does.
+    async fn wait_for_change(&self, index: u64, timeout: std::time::Duration) -> Result<u64>;
+}
+
+/// [`Registry::wait_for_change`] on top of a catalog.
+pub(crate) async fn wait_for_change(catalog: &Catalog, index: u64, timeout: std::time::Duration) -> u64 {
+    let mut changes = catalog.subscribe();
+    let _ = tokio::time::timeout(timeout, changes.wait_for(|i| *i > index)).await;
+    catalog.index()
 }

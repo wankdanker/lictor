@@ -5,8 +5,8 @@ Lictor separates three things:
 1. **Distributed infrastructure**: persistence, replication, change distribution. Delegated to a
    [`Store`](backends.md), normally NATS JetStream KV.
 2. **Registry semantics**: membership, ownership, health, eligibility. Implemented once, in `lictor-core`.
-3. **Protocols**: the CLI and native HTTP API today; Consul HTTP/DNS, native DNS and NATS
-   request/reply adapters next. Adapters depend only on the `Registry` trait.
+3. **Protocols**: the CLI, the native HTTP API and web UI, and Consul-compatible DNS and HTTP;
+   native DNS and NATS request/reply adapters next. Adapters depend only on the `Registry` trait.
 
 ## Crates
 
@@ -16,6 +16,7 @@ Lictor separates three things:
 | `lictor-store` | The `Store`/`Bucket` traits, the in-memory store, and the backend conformance suite. |
 | `lictor-store-nats` | The NATS JetStream KV store (plus a `testing` helper that runs `nats-server`). |
 | `lictor-core` | `Catalog`, `Agent`, `Observer`, health engine, and the `Registry` trait. |
+| `lictor-consul` | Consul-compatible DNS and HTTP (catalog, health) adapters, answering from the `Registry`. |
 | `lictor` | The binary: CLI (CLYOPS), agent runner, native HTTP API server and client, embedded web UI. |
 
 The web UI (`ui/`, SvelteKit) is a single-page app built to static files and embedded into the

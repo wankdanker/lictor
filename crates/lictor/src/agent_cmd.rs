@@ -77,6 +77,72 @@ async fn shutdown_signal() {
     }
 }
 
+/// An `ip:port` listen option, or `None` when it is `disabled`.
+fn listen_addr(v: &Values, var: &str, flag: &str) -> Result<Option<SocketAddr>, CliError> {
+    let raw = v.str(var).trim();
+    if raw.is_empty() || raw == "disabled" {
+        return Ok(None);
+    }
+    raw.parse().map(Some).map_err(|e| CliError::invalid(format!("{flag} must be ip:port or 'disabled': {e}")))
+}
+
+fn dns_config(v: &Values) -> Result<lictor_consul::dns::DnsConfig, CliError> {
+    let secs = |var, what| required_duration(v, var, what).map(|d| d.as_secs().min(u32::MAX as u64) as u32);
+    Ok(lictor_consul::dns::DnsConfig {
+        domain: v.str("LICTOR_DNS_DOMAIN").to_string(),
+        service_ttl: secs("LICTOR_DNS_SERVICE_TTL", "DNS service ttl")?,
+        node_ttl: secs("LICTOR_DNS_NODE_TTL", "DNS node ttl")?,
+        only_passing: v.bool("LICTOR_DNS_ONLY_PASSING"),
+        udp_answer_limit: v.int("LICTOR_DNS_UDP_ANSWER_LIMIT") as usize,
+    })
+}
+
+/// Start the Consul DNS and HTTP adapters that are enabled. They run until aborted.
+async fn start_consul(
+    v: &Values,
+    registry: Arc<dyn Registry>,
+    cfg: &AgentConfig,
+) -> Result<Vec<tokio::task::JoinHandle<()>>, CliError> {
+    let local = lictor_consul::Local {
+        node_id: cfg.node_id.clone(),
+        namespace: cfg.namespace.clone(),
+        region: cfg.region.clone(),
+        address: cfg.addresses.iter().find_map(|a| a.parse().ok()),
+    };
+    let mut tasks = Vec::new();
+    if let Some(addr) = listen_addr(v, "LICTOR_DNS_ADDR", "--dns-addr")? {
+        let server = lictor_consul::dns::DnsServer::new(registry.clone(), dns_config(v)?, local.clone())
+            .map_err(CliError::invalid)?;
+        let (udp, tcp) = lictor_consul::dns::bind(addr).await.map_err(|e| {
+            CliError::invalid(format!(
+                "cannot listen for DNS on {addr}: {e} (choose another --dns-addr, or 'disabled')"
+            ))
+        })?;
+        let bound = udp.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| addr.to_string());
+        tracing::info!(addr = %bound, domain = %v.str("LICTOR_DNS_DOMAIN"), "Consul DNS listening");
+        tasks.push(tokio::spawn(Arc::new(server).serve(udp, tcp)));
+    }
+    if let Some(addr) = listen_addr(v, "LICTOR_CONSUL_HTTP_ADDR", "--consul-http-addr")? {
+        let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
+            CliError::invalid(format!(
+                "cannot listen for the Consul HTTP API on {addr}: {e} (choose another --consul-http-addr, or 'disabled')"
+            ))
+        })?;
+        let bound = listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| addr.to_string());
+        if !addr.ip().is_loopback() {
+            tracing::warn!(addr = %bound, "the Consul HTTP API is exposed beyond loopback; it is read-only but lists every service and node");
+        }
+        tracing::info!(addr = %bound, "Consul HTTP API listening");
+        let app = lictor_consul::http::router(registry, local);
+        tasks.push(tokio::spawn(async move {
+            if let Err(e) = axum::serve(listener, app).await {
+                tracing::error!(error = %e, "Consul HTTP API failed");
+            }
+        }));
+    }
+    Ok(tasks)
+}
+
 pub async fn run(v: &Values) -> Result<(), CliError> {
     let dev = v.bool("LICTOR_DEV");
     let cfg = config(v, dev)?;
@@ -122,6 +188,7 @@ pub async fn run(v: &Values) -> Result<(), CliError> {
     let bound = listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| addr.to_string());
     tracing::info!(addr = %bound, "HTTP API listening");
     let registry: Arc<dyn Registry> = Arc::new(agent.clone());
+    let consul = start_consul(v, registry.clone(), agent.config()).await?;
     let mut app = crate::api::router(registry, token);
     if v.bool("LICTOR_UI") {
         // Added after the API's token layer: the UI's files are public, its API calls are not.
@@ -142,6 +209,9 @@ pub async fn run(v: &Values) -> Result<(), CliError> {
     });
     if let Err(e) = server.await {
         tracing::error!(error = %e, "HTTP server failed");
+    }
+    for task in consul {
+        task.abort();
     }
 
     if agent.is_fenced() {

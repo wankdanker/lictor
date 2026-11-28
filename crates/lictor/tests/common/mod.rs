@@ -19,6 +19,8 @@ pub fn lictor(addr: &str) -> Command {
         }
     }
     c.env("LICTOR_HTTP_ADDR", addr).env("NO_COLOR", "1");
+    // Parallel agents cannot all have Consul's ports: give the adapters free ones.
+    c.env("LICTOR_DNS_ADDR", "127.0.0.1:0").env("LICTOR_CONSUL_HTTP_ADDR", "127.0.0.1:0");
     c
 }
 
@@ -112,6 +114,21 @@ impl AgentProc {
                 panic!("agent exited early ({status}):\n{}", self.log_text());
             }
             assert!(Instant::now() < deadline, "agent did not become ready:\n{}", self.log_text());
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    /// The address in the agent's "<message> addr=..." log line, waiting for it to appear.
+    pub fn logged_addr(&self, message: &str) -> String {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            let log = self.log_text();
+            if let Some(line) = log.lines().find(|l| l.contains(message))
+                && let Some((_, rest)) = line.split_once("addr=")
+            {
+                return rest.split_whitespace().next().unwrap().trim_matches('"').to_string();
+            }
+            assert!(Instant::now() < deadline, "no '{message}' in the agent log:\n{log}");
             std::thread::sleep(Duration::from_millis(50));
         }
     }

@@ -53,7 +53,9 @@ lictor agent --namespace prod --region us-east --advertise 10.0.1.5 --config-dir
 
 On `SIGTERM`/`Ctrl-C` the agent removes its membership (unless `--leave-on-shutdown=false`) and exits 0.
 
-The agent also serves the [web UI](ui.md) at `/ui` on its HTTP address; `--ui=false` turns it off.
+The agent also serves the [web UI](ui.md) at `/ui` on its HTTP address (`--ui=false` turns it off),
+and [Consul-compatible](consul.md) DNS on `127.0.0.1:8600` and HTTP on `127.0.0.1:8500`
+(`--dns-addr`, `--consul-http-addr`; `disabled` turns either off).
 
 ### `lictor status`
 

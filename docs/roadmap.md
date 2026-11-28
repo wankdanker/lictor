@@ -23,26 +23,26 @@
 - [x] Management UI embedded in the binary at `/ui` (SvelteKit): overview, catalog, live instance view, nodes, register/edit/deregister services, add/remove/report checks, token prompt. See [ui.md](ui.md).
 - [x] `GET /v1/agent/services/{id}/definition` and `lictor services export` for editing stored definitions.
 
-## Phase 2: Consul compatibility (next)
+## Phase 2: Consul compatibility (done for discovery)
 
-Each adapter is its own crate depending only on `lictor_core::Registry`, enabled by a flag.
+`lictor-consul`, a client of `lictor_core::Registry` like the CLI. See [consul.md](consul.md).
 
-**Characterization first.** A test harness that runs the same scenario against a pinned Consul
-(in Docker) and against Lictor, normalizes non-contractual fields (timestamps, generated
-indexes), and compares the responses. Golden fixtures are checked in.
-
-- [ ] `adapter-consul-http` on `127.0.0.1:8500`:
-  `PUT /v1/agent/service/register`, `PUT /v1/agent/service/deregister/:id`, `GET /v1/agent/services`,
-  `GET /v1/agent/checks`, `PUT /v1/agent/check/register`, `PUT /v1/agent/check/{pass,warn,fail}/:id`,
-  `GET /v1/catalog/services`, `GET /v1/catalog/service/:name`, `GET /v1/catalog/nodes`,
-  `GET /v1/health/service/:name` (with `?passing`, `?tag`, `?dc`, `?filter` subset).
-  Blocking queries (`?index=`, `X-Consul-Index`) on top of the catalog index and `watch`.
-- [ ] `adapter-consul-dns` on `127.0.0.1:8600` (UDP and TCP, `hickory-server`):
-  `name.service[.dc].consul`, `tag.name.service.consul`, RFC 2782 `_name._tag.service.consul`,
-  `node.consul`; A, AAAA, SRV; Consul's TTLs, ordering (shuffling), negative answers and truncation.
-- [ ] Mapping decisions to confirm against your Consul usage: region = datacenter; namespace not exposed
-  (Consul OSS has none) or mapped to Enterprise namespaces; node checks (Consul `serfHealth`).
-- [ ] Node-level checks (checks not attached to a service) for Consul parity.
+- [x] Characterization against Consul 1.22.7 in Docker: the same services registered in both, DNS
+  and HTTP answers compared (`crates/lictor/tests/consul_compat.rs`, CI job "Consul compatibility").
+- [x] Consul DNS on `127.0.0.1:8600`, UDP and TCP: `[tag.]name.service[.dc].consul`, RFC 2782
+  `_name._tag.service.consul`, `.ns`/`.dc` locality, `node.consul`, `addr.consul`; A, AAAA, SRV,
+  CNAME for host names, SOA and NS; Consul's TTLs, shuffling, UDP answer limit, truncation and
+  negative answers.
+- [x] Consul HTTP reads on `127.0.0.1:8500`: catalog services, service, nodes and datacenters;
+  health service (`?passing`, `?tag`, `?dc`, `?node-meta`); agent self; blocking queries on a
+  catalog index that moves only on real changes.
+- [x] Prometheus `consul_sd_configs` verified with a real Prometheus (targets, relabeled metadata,
+  removal on deregistration).
+- [x] Mapping: region = datacenter; an agent answers for its namespace; node `serfHealth` check.
+- [ ] Consul registration endpoints (`/v1/agent/service/register`, check updates), if a client
+  that cannot use the CLI or native API needs them.
+- [ ] `filter` expressions (a subset), prepared queries, node TXT records in DNS.
+- [ ] Node-level checks (checks not attached to a service).
 
 ## Phase 3: native adapters and operations
 

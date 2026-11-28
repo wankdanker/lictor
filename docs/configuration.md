@@ -60,6 +60,7 @@ The ones you are most likely to use:
 | `--node-meta` | none | `key=value,key=value`. `os` and `arch` are added automatically. |
 
 Identifiers (namespace, region, node id, service names and ids) use letters, digits, `_` and `-`.
+Tags are free text up to 255 characters (spaces allowed, as in Consul; no control characters).
 
 ### Behavior
 
@@ -71,6 +72,20 @@ Identifiers (namespace, region, node id, service names and ids) use letters, dig
 | `--reconcile` | `adopt` | Registrations from this node's previous run: `adopt`, `drop` or `keep` (inactive). |
 | `--http-addr` | `127.0.0.1:7171` | Where the HTTP API listens. |
 | `--token` | none | Require `Authorization: Bearer <token>` on every API request. |
+| `--ui` | `true` | Serve the [web UI](ui.md) at `/ui`. |
+
+### Consul compatibility
+
+See [consul.md](consul.md). Both listeners use Consul's ports; `disabled` turns one off.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--dns-addr` | `127.0.0.1:8600` | Consul-compatible DNS, UDP and TCP. |
+| `--dns-domain` | `consul` | The domain answered (`web.service.consul`). |
+| `--dns-service-ttl`, `--dns-node-ttl` | `0s` | TTL of service and node records (Consul's default is 0). |
+| `--dns-only-passing` | `false` | Leave warning instances out of answers (critical ones always are). |
+| `--dns-udp-answer-limit` | `3` | Most answers over UDP when the query has no EDNS. |
+| `--consul-http-addr` | `127.0.0.1:8500` | Consul-compatible catalog and health API (read-only), for Prometheus and other clients. |
 
 ### Registry and leases
 

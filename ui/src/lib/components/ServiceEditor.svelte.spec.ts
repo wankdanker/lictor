@@ -16,7 +16,9 @@ describe('ServiceEditor', () => {
 		const onsubmit = setup();
 		await page.getByLabelText('Name').fill('web');
 		await page.getByLabelText('Port').fill('8080');
-		await page.getByLabelText('Tags').fill('v2, primary');
+		await page.getByLabelText('Tags').fill('v2');
+		await userEvent.keyboard('{Enter}');
+		await page.getByLabelText('Tags').fill('dma-New York');
 		await userEvent.keyboard('{Enter}');
 		await page.getByRole('button', { name: 'Add metadata' }).click();
 		await page.getByLabelText('Metadata key 1').fill('shard');
@@ -30,7 +32,7 @@ describe('ServiceEditor', () => {
 		expect(onsubmit.mock.calls[0][0]).toEqual({
 			name: 'web',
 			port: 8080,
-			tags: ['v2', 'primary'],
+			tags: ['v2', 'dma-New York'],
 			metadata: { shard: '4' },
 			checks: [
 				{

@@ -32,7 +32,8 @@ pub fn ident(what: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Check one tag: non-empty, at most 255 characters, no whitespace or control characters.
+/// Check one tag: non-empty, at most 255 characters, no control characters. Spaces are allowed,
+/// as in Consul (`dma-New York`); such tags work in HTTP queries but not in DNS names.
 pub fn tag(value: &str) -> Result<(), String> {
     if value.is_empty() {
         return Err("tags must not be empty".into());
@@ -40,8 +41,8 @@ pub fn tag(value: &str) -> Result<(), String> {
     if value.len() > MAX_TAG_LEN {
         return Err(format!("tag '{value}' is longer than {MAX_TAG_LEN} characters"));
     }
-    if value.chars().any(|c| c.is_whitespace() || c.is_control()) {
-        return Err(format!("tag '{value}' must not contain whitespace"));
+    if value.chars().any(char::is_control) {
+        return Err(format!("tag '{}' must not contain control characters", value.escape_debug()));
     }
     Ok(())
 }
@@ -97,7 +98,10 @@ mod tests {
         tag("v2").unwrap();
         tag("env=prod").unwrap();
         assert!(tag("").is_err());
-        assert!(tag("has space").is_err());
+        tag("dma-New York").unwrap();
+        tag("traefik.http.routers.api.rule=Host(`api.example.com`)").unwrap();
+        assert!(tag("tab\there").is_err());
+        assert!(tag("new\nline").is_err());
         assert!(tag(&"t".repeat(256)).is_err());
     }
 

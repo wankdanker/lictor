@@ -230,6 +230,10 @@ impl Registry for HttpRegistry {
         Ok(lines.boxed())
     }
 
+    async fn wait_for_change(&self, _: u64, _: std::time::Duration) -> Result<u64> {
+        Err(RegistryError::Unsupported("blocking on catalog changes needs a local agent or --direct".into()))
+    }
+
     async fn status(&self) -> Result<AgentStatus> {
         self.get("/v1/status", &[]).await
     }

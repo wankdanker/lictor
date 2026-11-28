@@ -214,6 +214,8 @@ mod tests {
 
         let mut r = ServiceRegistration::new("matcher", 8080);
         r.tags = vec!["has space".into()];
+        r.validate().unwrap();
+        r.tags = vec!["bell\u{7}".into()];
         assert!(r.validate().is_err());
 
         let mut r = ServiceRegistration::new("matcher", 8080);

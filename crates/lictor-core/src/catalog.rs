@@ -60,8 +60,10 @@ impl<T> Default for Table<T> {
     }
 }
 
-impl<T> Table<T> {
-    /// Returns true if the visible state changed.
+impl<T: PartialEq> Table<T> {
+    /// Returns true if the visible state changed. Rewriting the same value (a heartbeat or a
+    /// health refresh) only renews the lease: it is not a change, so watchers and blocking
+    /// queries are not woken by every heartbeat in the cluster.
     fn put(&mut self, key: &str, value: T, revision: u64, deadline: Option<Instant>) -> bool {
         if let Some(&last) = self.last.get(key) {
             if revision < last {
@@ -76,10 +78,17 @@ impl<T> Table<T> {
             }
         }
         self.last.insert(key.to_string(), revision);
+        let changed = match self.slots.get(key) {
+            // A lease that had run out (not yet swept) is invisible, so renewing it is a change.
+            Some(old) => old.value != value || old.deadline.is_some_and(|d| d <= Instant::now()),
+            None => true,
+        };
         self.slots.insert(key.to_string(), Slot { value, revision, deadline, epoch: self.epoch });
-        true
+        changed
     }
+}
 
+impl<T> Table<T> {
     fn delete(&mut self, key: &str, revision: u64) -> bool {
         if self.last.get(key).is_some_and(|&last| last >= revision) {
             return false;
@@ -607,6 +616,37 @@ mod tests {
 
     fn q(name: &str) -> DiscoveryQuery {
         DiscoveryQuery::service(name)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn heartbeats_renew_leases_without_counting_as_changes() {
+        let c = catalog();
+        let s = svc("web", "web1", "n1", "g1");
+        put(&c, Kind::Services, s.key(), &s, 1);
+        let n = node("n1", "g1");
+        put(&c, Kind::Nodes, n.key(), &n, 1);
+        let idx = c.index();
+
+        // Heartbeats rewrite the same record: the lease moves, the index does not.
+        for rev in 2..5 {
+            tokio::time::advance(TTL / 2).await;
+            put(&c, Kind::Nodes, n.key(), &n, rev);
+        }
+        assert_eq!(c.index(), idx, "a heartbeat is not a change");
+        assert_eq!(c.discover(&q("web")).len(), 1, "still alive well past the first lease");
+
+        // A changed record is a change.
+        let mut moved = n.clone();
+        moved.addresses = vec!["10.0.0.2".into()];
+        put(&c, Kind::Nodes, n.key(), &moved, 5);
+        assert_eq!(c.index(), idx + 1);
+
+        // So is reviving a lease that ran out before the sweep removed it.
+        tokio::time::advance(TTL + Duration::from_secs(1)).await;
+        assert!(c.discover(&q("web")).is_empty());
+        put(&c, Kind::Nodes, n.key(), &moved, 6);
+        assert_eq!(c.index(), idx + 2);
+        assert_eq!(c.discover(&q("web")).len(), 1);
     }
 
     #[tokio::test(start_paused = true)]
