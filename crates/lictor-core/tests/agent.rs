@@ -262,6 +262,37 @@ async fn graceful_leave_hides_services_immediately() {
     assert_eq!(b.list_nodes(RegistryScope::all()).await.unwrap().len(), 1);
 }
 
+/// A heartbeat that lands after the agent last recorded its revision must not stop it leaving.
+#[tokio::test(start_paused = true)]
+async fn graceful_leave_survives_a_concurrent_membership_write() {
+    let store = MemoryStore::new();
+    let a = agent(&store, "n1").await;
+    let b = agent(&store, "n2").await;
+    a.register(web(1)).await.unwrap();
+    let nodes = store.bucket(&BucketConfig::new("LICTOR_NODES"), false).await.unwrap();
+    let key = nodes.keys().await.unwrap().into_iter().find(|k| k.ends_with(".n1")).expect("n1 membership");
+    let current = nodes.get(&key).await.unwrap().unwrap();
+    nodes.update(&key, current.value, current.revision).await.unwrap();
+
+    a.shutdown(true).await;
+    assert!(nodes.get(&key).await.unwrap().is_none(), "membership removed despite the stale revision");
+    tokio::task::yield_now().await;
+    assert!(b.discover(q("web")).await.unwrap().is_empty());
+}
+
+/// Leaving never deletes a membership record that a newer generation has taken over.
+#[tokio::test(start_paused = true)]
+async fn graceful_leave_keeps_a_newer_generations_membership() {
+    let store = MemoryStore::new();
+    let old = agent(&store, "n1").await;
+    let new = agent(&store, "n1").await;
+    old.shutdown(true).await;
+    let nodes = store.bucket(&BucketConfig::new("LICTOR_NODES"), false).await.unwrap();
+    let key = nodes.keys().await.unwrap().into_iter().find(|k| k.ends_with(".n1")).expect("n1 membership");
+    let rec: serde_json::Value = serde_json::from_slice(&nodes.get(&key).await.unwrap().unwrap().value).unwrap();
+    assert_eq!(rec["generation"], new.generation());
+}
+
 #[tokio::test(start_paused = true)]
 async fn crashed_agent_expires_after_membership_ttl() {
     let store = MemoryStore::new();

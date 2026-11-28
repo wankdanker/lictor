@@ -159,8 +159,7 @@ fn config_dir_services_are_registered_at_start() {
 fn bad_config_dir_fails_the_agent() {
     let conf = tempfile::tempdir().unwrap();
     std::fs::write(conf.path().join("web.toml"), "name = \"bad name\"\n").unwrap();
-    let addr = format!("127.0.0.1:{}", common::free_port());
-    let r: common::Run = common::lictor(&addr)
+    let r: common::Run = common::lictor("127.0.0.1:0")
         .args(["agent", "--dev", "--config-dir", conf.path().to_str().unwrap()])
         .output()
         .unwrap()
@@ -190,7 +189,7 @@ fn exit_codes_and_error_output() {
     assert!(r.stderr.contains("only TTL checks"), "{}", r.stderr);
 
     // Nothing listening.
-    let r = run(&format!("127.0.0.1:{}", common::free_port()), &["status"]);
+    let r = run(common::NOTHING_LISTENS, &["status"]);
     assert_eq!(r.code, 3, "unavailable");
     assert!(r.stderr.contains("Is 'lictor agent' running?"), "{}", r.stderr);
 
