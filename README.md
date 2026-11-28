@@ -82,6 +82,9 @@ This starts NATS and two agents, all on localhost:
 | `4222` | NATS, for `lictor --direct` or another agent you run on the host |
 | `8222` | NATS monitoring |
 
+To open the UIs from another device on your network, start it with
+`LICTOR_BIND=0.0.0.0 LICTOR_TOKEN=<a real token>` (NATS stays on localhost).
+
 `agent-a` registers the example services in [`deploy/docker/example-services`](deploy/docker/example-services).
 Try `lictor --http-addr 127.0.0.1:7172 --token change-me discover nats`.
 
